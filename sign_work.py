@@ -1,7 +1,6 @@
 import time
 import random
-from browser_driver import login
-from config_handler import save_config
+from config_handler import save_config, load_config
 from datetime import datetime, timedelta
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -44,16 +43,17 @@ def calculate_work_time(driver):
         return last_work_time, next_work_time
     return None, None
 
-def perform_sign(driver, config, SIGN_URL, LOGIN_URL):
+def perform_sign(driver, username, SIGN_URL):
     """执行签到操作"""
+    config = load_config()
     driver.get(SIGN_URL)
     # 检查是否需要重新登录
     if driver.find_elements(By.XPATH, NEED_LOGIN_SIGN_XPATH):
-        print("Cookie过期，重新登录...")
-        cookies = login(driver, LOGIN_URL)
-        config['cookies'] = cookies
-        save_config(config)
-        driver.get(SIGN_URL)
+        print("Cookie过期，标记状态...")
+        if username in config:
+            config[username]["is_cookie_valid"] = False
+            save_config(config)
+        return
 
     # 检查是否已经签到
     if driver.find_elements(By.XPATH, ALREADY_SIGNED_XPATH):
@@ -69,16 +69,17 @@ def perform_sign(driver, config, SIGN_URL, LOGIN_URL):
     print("签到成功")
 
 
-def perform_work(driver, config, WORK_URL, LOGIN_URL):
+def perform_work(driver, username, WORK_URL):
     """执行打工操作"""
+    config = load_config()
     driver.get(WORK_URL)
     # 检查是否需要重新登录
     if driver.find_elements(By.XPATH, NEED_LOGIN_WORK_XPATH):
-        print("Cookie过期，重新登录...")
-        cookies = login(driver, LOGIN_URL)
-        config['cookies'] = cookies
-        save_config(config)
-        driver.get(WORK_URL)
+        print("Cookie过期，标记状态...")
+        if username in config:
+            config[username]["is_cookie_valid"] = False
+            save_config(config)
+        return
 
     # 检查是否需要等待
     last_work_time, _ = calculate_work_time(driver)  # 使用下划线忽略未使用的next_work_time

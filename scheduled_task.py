@@ -109,7 +109,6 @@ def create_login_startup_task():
             print(f"开机启动任务 {task_name} 已创建。")
             return task_name
 
-
         # 以管理员权限执行命令创建任务
         subprocess.run(
             command,
