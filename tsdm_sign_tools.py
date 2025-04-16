@@ -1,9 +1,10 @@
-from config_handler import load_config, save_config
+import os
+import time
+import shutil
 from browser_driver import setup_driver, login
+from config_handler import load_config, save_config
 from sign_work import perform_sign, perform_work, calculate_work_time
 from scheduled_task import create_login_startup_task, create_scheduled_task
-import os
-import shutil
 
 LOGIN_URL = 'https://www.tsdm39.com/member.php?mod=logging&action=login'
 SIGN_URL = 'https://www.tsdm39.com/plugin.php?id=dsu_paulsign:sign'
@@ -29,7 +30,6 @@ def main():
                 for cookie in config['cookies']:
                     driver.add_cookie(cookie)
 
-
         # 直接执行签到和打工操作，由浏览器判断是否需要执行
         if driver:
             print("查看签到情况")
@@ -39,26 +39,33 @@ def main():
             
             # 获取下次打工时间并创建计划任务
             driver.get(WORK_URL)
-            last_work_time, next_work_time = calculate_work_time(driver)
+            _, next_work_time = calculate_work_time(driver)
+
+            # 关闭浏览器
+            if driver:
+                try:
+                    driver.quit()
+                    # print("浏览器已成功关闭")
+                except Exception as close_error:
+                    print(f"关闭浏览器时发生错误: {close_error}")
+            if user_data_dir and os.path.exists(user_data_dir):
+                try:
+                    shutil.rmtree(user_data_dir)
+                except Exception as rm_error:
+                    print(f"删除用户数据目录时出错: {rm_error}")
+
+            print(f"创建下次打工计划任务，预计在{next_work_time.strftime('%H:%M:%S')}后执行")
             create_scheduled_task(next_work_time)
-            print(f"上次打工时间为{last_work_time.strftime('%H:%M:%S')}")
+            print(f"本次任务全部完成，浏览器已关闭")
     except Exception as e:
         print(f"发生错误: {e}")
     finally:
-        if driver:
-            try:
-                driver.quit()
-                print("浏览器已成功关闭")
-            except Exception as close_error:
-                print(f"关闭浏览器时发生错误: {close_error}")
-        if user_data_dir and os.path.exists(user_data_dir):
-            try:
-                shutil.rmtree(user_data_dir)
-            except Exception as rm_error:
-                print(f"删除用户数据目录时出错: {rm_error}")
+        # 因为前面已经关闭浏览器和清理目录，这里可以省略重复操作
+        pass
     
     create_login_startup_task()
-    input("请按回车键退出...")
+    print("程序将在 5 秒后自动退出...")
+    time.sleep(5)  # 等待 5 秒自动退出
 
 if __name__ == "__main__":
     main()

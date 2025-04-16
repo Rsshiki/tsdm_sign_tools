@@ -1,11 +1,11 @@
 import time
 import random
+from browser_driver import login
+from config_handler import save_config
 from datetime import datetime, timedelta
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from browser_driver import login
-from config_handler import save_config
 
 # 签到页面选择器
 NEED_LOGIN_SIGN_XPATH = '//div[@id="messagetext" and contains(@class, "alert_info")]//p[contains(text(), "您需要先登录才能继续本操作")]'
@@ -83,6 +83,7 @@ def perform_work(driver, config, WORK_URL, LOGIN_URL):
     # 检查是否需要等待
     last_work_time, _ = calculate_work_time(driver)  # 使用下划线忽略未使用的next_work_time
     if last_work_time is not None:
+        print(f"在{last_work_time.strftime('%H:%M:%S')}已打过工")
         return
 
     while True:

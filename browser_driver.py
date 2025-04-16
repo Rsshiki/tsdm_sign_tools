@@ -10,7 +10,7 @@ import shutil
 # 配置 Python 日志，方便调试
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def setup_driver(headless=True):
+def setup_driver(headless=True): #True为无头模式，False为有头模式
     """设置浏览器驱动"""
     edge_options = Options()
     if headless:
@@ -24,7 +24,9 @@ def setup_driver(headless=True):
         user_data_dir = tempfile.mkdtemp()
         edge_options.add_argument(f'--user-data-dir={user_data_dir}')
         service = Service(EdgeChromiumDriverManager().install())
+        print("尝试启动浏览器...")
         driver = webdriver.Edge(service=service, options=edge_options)
+        print("浏览器成功启动！")
     except Exception as e:
         logging.error(f"启动浏览器时出错: {e}")
         if user_data_dir and os.path.exists(user_data_dir):
@@ -33,7 +35,6 @@ def setup_driver(headless=True):
             except Exception as rm_error:
                 logging.error(f"删除临时用户数据目录时出错: {rm_error}")
     return driver, user_data_dir
-
 
 def login(driver, login_url):
     if driver is None:
