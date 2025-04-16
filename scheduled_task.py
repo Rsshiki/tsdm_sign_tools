@@ -93,7 +93,7 @@ def clear_previous_scheduled_tasks():
 
 def create_login_startup_task():
     """检查是否有用户登录后自动启动的计划任务，没有则创建"""
-    task_name = "TSDM_Work_LoginStartup"
+    task_name = "TS_DmWork_LoginStartup"
     exe_path = sys.executable.replace("\\", "\\\\")
     command = f'schtasks /Create /TN "{task_name}" /TR "{exe_path}" /SC ONLOGON'
 
@@ -119,8 +119,8 @@ def create_login_startup_task():
             stdout=subprocess.PIPE,  # 捕获标准输出
             stderr=subprocess.PIPE   # 捕获标准错误
         )
-        print(f"用户登录后自动启动的计划任务 {task_name} 创建成功。")
+        print(f"创建开机自动启动任务 {task_name} 创建成功。")
         return task_name
     except subprocess.CalledProcessError as e:
-        print(f"创建用户登录后自动启动的计划任务失败，需要管理员身份启动exe，命令: {command}")
+        print(f"创建开机自动启动任务失败，需要管理员身份运行")
         print(f"错误输出: {e.stderr.decode('gbk', errors='ignore')}")

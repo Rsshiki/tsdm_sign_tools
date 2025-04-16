@@ -56,15 +56,15 @@ def main():
 
             print(f"创建下次打工计划任务，预计在{next_work_time.strftime('%H:%M:%S')}后执行")
             create_scheduled_task(next_work_time)
-            print(f"本次任务全部完成，浏览器已关闭")
     except Exception as e:
         print(f"发生错误: {e}")
     finally:
         # 因为前面已经关闭浏览器和清理目录，这里可以省略重复操作
         pass
-    
+    print(f"尝试创建开机自动启动任务")
     create_login_startup_task()
-    print("程序将在 5 秒后自动退出...")
+    print(f"创建计划任务可在任务计划程序中查看")
+    print("所有任务完成，程序将在 5 秒后自动退出...")
     time.sleep(5)  # 等待 5 秒自动退出
 
 if __name__ == "__main__":
