@@ -85,23 +85,74 @@ def perform_work(driver, config, WORK_URL, LOGIN_URL):
     if last_work_time is not None:
         return
 
-    # 执行打工动作
-    print("开始执行打工动作")
-    work_buttons = ['np_advid1', 'np_advid2', 'np_advid4', 'np_advid6', 'np_advid7', 'np_advid9']
-    for button_id in work_buttons:
-        try:
-            button = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, button_id)))
-            print(f"成功定位到打工按钮: {button_id}")
-            button.click()
-            time.sleep(random.uniform(2, 3))
-        except Exception as e:
-            print(f"定位或点击打工按钮 {button_id} 时出错: {e}")
+    while True:
+        # 执行打工动作
+        print("开始执行打工动作")
+        # 从网页获取所有以 np_advid 开头的按钮 id
+        work_buttons = WebDriverWait(driver, 10).until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, '[id^="np_advid"]')))
+        work_buttons_ids = [button.get_attribute('id') for button in work_buttons]
+        random.shuffle(work_buttons_ids)  # 随机打乱按钮顺序
+        print(f"找到的所有打工按钮: {work_buttons_ids}")
 
-    try:
-        stop_ad_button = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, STOP_AD_BUTTON_CSS)))
-        print("成功定位到停止广告按钮")
-        stop_ad_button.click()
-    except Exception as e:
-        print(f"定位或点击停止广告按钮时出错: {e}")
-        
-    print("打工动作执行完成")
+        all_clicked_success = True
+        for button_id in work_buttons_ids:
+            try:
+                button = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, button_id)))
+                print(f"成功定位到打工按钮: {button_id}")
+                
+                # 记录当前窗口句柄
+                original_window = driver.current_window_handle
+                
+                button.click()
+                time.sleep(random.uniform(1, 3))
+                
+                # 切换回原窗口
+                driver.switch_to.window(original_window)
+                
+                # 检查按钮是否成功点击
+                a_element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, f'#{button_id} a')))
+                style_value = a_element.get_attribute('style')
+                if style_value and 'display: none;' in ' '.join(style_value.split()).strip():
+                    print(f"按钮 {button_id} 点击成功")
+                else:
+                    print(f"按钮 {button_id} 点击可能未成功")
+                    all_clicked_success = False
+
+            except Exception as e:
+                print(f"定位、点击或检查打工按钮 {button_id} 时出错: {e}")
+                all_clicked_success = False
+
+        if not all_clicked_success:
+            choice = input("部分广告按钮未成功点击，是否重新进行打工？(输入 y 重新打工，其他任意键退出): ")
+            if choice.lower() != 'y':
+                break
+            continue
+
+        if all_clicked_success:
+            try:
+                stop_ad_button = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, STOP_AD_BUTTON_CSS)))
+                print("成功定位到停止广告按钮")
+                stop_ad_button.click()
+
+                # 检查是否出现失败提示
+                try:
+                    failure_element = WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.XPATH, '//div[@id="messagetext" and @class="alert_info"]//p[contains(text(), "不要作弊哦，重新进行游戏吧！")]'))
+                    )
+                    print("打工失败，页面提示需要重新进行游戏。")
+                    choice = input("打工失败，是否重新进行打工？(输入 y 重新打工，其他任意键退出): ")
+                    if choice.lower() != 'y':
+                        break
+                    else:
+                        continue
+                except:
+                    print("打工可能成功，未检测到失败提示信息。")
+                    print("打工动作执行完成")
+                    break
+
+            except Exception as e:
+                print(f"定位或点击停止广告按钮时出错: {e}")
+                all_clicked_success = False
+                choice = input("点击停止广告按钮失败，是否重新进行打工？(输入 y 重新打工，其他任意键退出): ")
+                if choice.lower() != 'y':
+                    break
