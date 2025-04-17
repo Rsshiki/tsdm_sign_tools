@@ -1,7 +1,7 @@
 import json
 import os
 
-CONFIG_FILE = "accounts_test.json"
+CONFIG_FILE = "config.json"
 
 def load_config():
     """
