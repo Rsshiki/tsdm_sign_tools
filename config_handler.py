@@ -18,6 +18,8 @@ def load_config():
                 # 确保 browser_info 字段存在
                 if "browser_info" not in config:
                     config["browser_info"] = {}
+                if "scheduled_tasks" not in config:
+                    config["scheduled_tasks"] = []
                 # 确保每个账号都有 is_cookie_valid 字段
                 for account_info in config["accounts"].values():
                     if "is_cookie_valid" not in account_info:
@@ -25,10 +27,10 @@ def load_config():
                 return config
         else:
             print(f"{CONFIG_FILE} 文件不存在，将使用默认配置。")
-            return {"accounts": {}, "browser_info": {}}
+            return {"accounts": {}, "browser_info": {}, "scheduled_tasks": []}
     except Exception as e:
         print(f"加载配置文件 {CONFIG_FILE} 时出错: {e}")
-        return {"accounts": {}, "browser_info": {}}
+        return {"accounts": {}, "browser_info": {}, "scheduled_tasks": []}
 
 def save_config(config):
     """
@@ -46,4 +48,12 @@ def update_browser_info(browser_info):
     """
     config = load_config()
     config["browser_info"] = browser_info
+    save_config(config)
+
+def update_scheduled_tasks(task_names):
+    """
+    更新配置文件中的计划任务信息。
+    """
+    config = load_config()
+    config["scheduled_tasks"] = task_names
     save_config(config)

@@ -1,7 +1,15 @@
 import re
 import sys
+import ctypes
 import subprocess
 from datetime import timedelta
+from config_handler import load_config, update_scheduled_tasks
+
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
 
 def create_scheduled_task(next_work_time):
     """创建Windows计划任务"""
@@ -23,8 +31,8 @@ def create_scheduled_task(next_work_time):
         # 清除之前创建的单次任务
         clear_previous_scheduled_tasks()
         
-        # 以管理员权限执行命令创建任务
-        subprocess.run(
+        # 直接执行命令创建任务，不额外指定管理员权限
+        result = subprocess.run(
             command,
             shell=True,
             check=True,
@@ -32,28 +40,39 @@ def create_scheduled_task(next_work_time):
             stdout=subprocess.PIPE,  # 捕获标准输出
             stderr=subprocess.PIPE   # 捕获标准错误
         )
-        try:        
-            if task_name:
-                print(f"任务 {task_name}已创建")
-                try:
-                    subprocess.run(
-                        ['schtasks', '/Query', '/TN', task_name],
-                        shell=True,
-                        check=True
-                    )
-                except subprocess.CalledProcessError:
-                    print(f"验证任务 {task_name} 存在时出错")
-                
+        print(f"任务 {task_name} 创建成功，输出信息: {result.stdout.decode('gbk', errors='ignore')}")
+
+        if is_admin():
+            config = load_config()
+            scheduled_tasks = config["scheduled_tasks"]
+            if task_name not in scheduled_tasks:
+                scheduled_tasks.append(task_name)
+            update_scheduled_tasks(scheduled_tasks)
+        
+        try:
+            # 验证任务是否创建成功
+            verify_result = subprocess.run(
+                ['schtasks', '/Query', '/TN', task_name],
+                shell=True,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            print(f"验证任务 {task_name} 存在，输出信息: {verify_result.stdout.decode('gbk', errors='ignore')}")
         except subprocess.CalledProcessError as e:
-            print(f"验证任务时出错: {e.stderr}")
-            return None
+            print(f"验证任务 {task_name} 存在时出错: {e.stderr.decode('gbk', errors='ignore')}")
     except subprocess.CalledProcessError as e:
         print(f"创建计划任务失败，命令: {command}")
         print(f"错误输出: {e.stderr.decode('gbk', errors='ignore')}")  # 打印错误信息
         return None
 
 def clear_previous_scheduled_tasks():
-    """清除之前创建的以 'TS_DmWork_' 开头的单次计划任务"""
+    """清除之前创建的以 'TS_DmWork_' 开头的单次计划任务，跳过管理员身份创建的任务"""
+    config = load_config()
+    admin_tasks = config["scheduled_tasks"]
+    valid_admin_tasks = []
+    failed_tasks = []  # 用于记录无法删除的任务
+
     try:
         # 查询所有计划任务
         result = subprocess.run(
@@ -73,9 +92,20 @@ def clear_previous_scheduled_tasks():
         task_pattern = re.compile(r'任务名: \\(TS_DmWork_[^ ]+)')
         matches = task_pattern.findall(output)
 
+        existing_tasks = set(matches)
+
+        for task in admin_tasks:
+            if task in existing_tasks:
+                valid_admin_tasks.append(task)
+
+        update_scheduled_tasks(valid_admin_tasks)
+
         for task in matches:
+            if task in valid_admin_tasks:
+                continue
             # 删除任务，注意任务名需要加上反斜杠
             full_task_name = f'\\{task}'
+            # 修正删除命令，去掉多余的引号
             delete_command = f'schtasks /Delete /TN "{full_task_name}" /F'
             try:
                 subprocess.run(
@@ -88,6 +118,14 @@ def clear_previous_scheduled_tasks():
                 )
             except subprocess.CalledProcessError as e:
                 print(f"删除任务 {full_task_name} 时出错: {e.stderr.decode('gbk', errors='ignore')}")
+                if task not in admin_tasks:
+                    failed_tasks.append(task)
+
+        # 将无法删除且不在配置文件中的任务添加到配置文件
+        if failed_tasks:
+            new_scheduled_tasks = valid_admin_tasks + failed_tasks
+            update_scheduled_tasks(new_scheduled_tasks)
+
     except Exception as e:
         print(f"清除计划任务时发生未知错误: {e}")
 
@@ -119,6 +157,14 @@ def create_login_startup_task():
             stderr=subprocess.PIPE   # 捕获标准错误
         )
         print(f"创建开机自动启动任务 {task_name} 创建成功。")
+
+        if is_admin():
+            config = load_config()
+            scheduled_tasks = config["scheduled_tasks"]
+            if task_name not in scheduled_tasks:
+                scheduled_tasks.append(task_name)
+            update_scheduled_tasks(scheduled_tasks)
+
         return task_name
     except subprocess.CalledProcessError as e:
         print(f"创建开机自动启动任务失败，需要管理员身份运行")

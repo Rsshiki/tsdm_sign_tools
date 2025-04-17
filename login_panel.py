@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 import tkinter as tk
 from tkinter import messagebox
@@ -17,23 +18,35 @@ class LoginTool:
     def __init__(self, root):
         self.root = root
         self.root.title("TSDM 登录工具")
+        # 初始化开始签到按钮为 None
+        self.start_sign_button = None
         self.load_configuration()  # 调用加载配置的方法
+
+        # 使用 grid 布局
+        self.root.columnconfigure(0, weight=1)
 
         # 显示浏览器版本信息的标签
         self.browser_version_label = tk.Label(root, text=f"浏览器驱动版本: {self.browser_info.get('version', '未知')}")
-        self.browser_version_label.pack(pady=5)
+        self.browser_version_label.grid(row=0, column=0, pady=5)
 
         # 展示面板
         self.account_frame = tk.Frame(root)
-        self.account_frame.pack(pady=10)
+        self.account_frame.grid(row=1, column=0, pady=10)
+
+        self.admin_tasks_frame = tk.Frame(root)
+        self.admin_tasks_frame.grid(row=2, column=0, pady=10)
+        self.display_admin_scheduled_tasks()
+
+        # 初始检查并更新按钮状态
+        self.update_start_sign_button()
 
         # 底部添加按钮
         self.add_button = tk.Button(root, text="添加新账号", command=self.show_login_browser)
-        self.add_button.pack(pady=10)
+        self.add_button.grid(row=4, column=0, pady=10)
 
         # 添加更新 geckodriver 按钮
         self.update_button = tk.Button(root, text="更新浏览器驱动", command=self.update_driver)
-        self.update_button.pack(pady=10)
+        self.update_button.grid(row=5, column=0, pady=10)
 
         self.display_logged_accounts()
 
@@ -41,8 +54,38 @@ class LoginTool:
         self.config = load_config()
         self.logged_accounts = self.config.get("accounts", {})
         self.browser_info = self.config.get("browser_info", {})
-        print(f"加载的账号信息: {self.logged_accounts}")
+        self.admin_scheduled_tasks = self.config.get("scheduled_tasks", [])
+        logging.info("已读取加载的账号信息")
+        # 加载配置后更新按钮状态
+        self.update_start_sign_button()
 
+    def update_start_sign_button(self):
+        # 判断是否打包成 EXE
+        if getattr(sys, 'frozen', False):
+            # 如果是打包后的 EXE，获取 EXE 所在目录
+            base_path = os.path.dirname(sys.executable)
+            file_name = 'tsdm_sign_tools.exe'
+        else:
+            # 如果是未打包的 Python 脚本，获取脚本所在目录
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            file_name = 'tsdm_sign_tools.py'
+
+        exe_path = os.path.join(base_path, file_name)
+        is_file_exist = os.path.isfile(exe_path)
+
+        if is_file_exist and self.logged_accounts:
+            if self.start_sign_button is None:
+                if getattr(sys, 'frozen', False):
+                    self.start_sign_button = tk.Button(self.root, text="开始签到", command=lambda: os.startfile(exe_path))
+                else:
+                    import subprocess
+                    self.start_sign_button = tk.Button(self.root, text="开始签到", command=lambda: subprocess.Popen(['python', exe_path]))
+                # 调整按钮位置，将其放在添加新账号按钮之上
+                self.start_sign_button.grid(row=3, column=0, pady=10)
+        else:
+            if self.start_sign_button:
+                self.start_sign_button.grid_forget()
+                self.start_sign_button = None
 
     def show_login_browser(self):
         driver, user_data_dir = setup_driver(headless=False)  # 通常添加账号时不需要无头模式
@@ -69,6 +112,9 @@ class LoginTool:
             self.save_config_changes()
             self.load_configuration()
             self.display_logged_accounts()
+            self.display_admin_scheduled_tasks()
+            # 确保添加账号后更新按钮状态
+            self.update_start_sign_button()
         except Exception as e:
             logging.error(f"等待 title 为 '访问我的空间' 的元素时出错: {e}")
             messagebox.showerror("错误", f"登录检测失败，请检查是否完成登录。错误信息: {e}")
@@ -99,7 +145,7 @@ class LoginTool:
             no_account_label.pack()
             return
 
-        print(f"准备展示的账号信息: {self.logged_accounts}")
+        logging.info("准备展示账号信息")
         for username in self.logged_accounts:
             account_frame = tk.Frame(self.account_frame)
             account_frame.pack(pady=5)
@@ -132,11 +178,16 @@ class LoginTool:
             self.save_config_changes()
             self.load_configuration()
             self.display_logged_accounts()
+            # 确保删除账号后更新按钮状态
+            self.update_start_sign_button()
 
     def update_driver(self):
         if update_geckodriver():
             self.load_configuration()  # 重新加载配置
             self.display_logged_accounts()
+            self.display_admin_scheduled_tasks()
+            # 确保更新驱动后更新按钮状态
+            self.update_start_sign_button()
             tk.messagebox.showinfo("更新成功", "浏览器驱动已成功更新。")
         else:
             tk.messagebox.showerror("更新失败", "浏览器驱动更新失败，请查看日志。")
@@ -144,6 +195,20 @@ class LoginTool:
     def save_config_changes(self):
         self.config["accounts"] = self.logged_accounts
         save_config(self.config)
+
+    def display_admin_scheduled_tasks(self):
+        for widget in self.admin_tasks_frame.winfo_children():
+            widget.destroy()
+
+        if self.admin_scheduled_tasks:
+            title_label = tk.Label(self.admin_tasks_frame, text="管理员身份计划任务：")
+            title_label.pack()
+            for task_name in self.admin_scheduled_tasks:
+                task_label = tk.Label(self.admin_tasks_frame, text=task_name)
+                task_label.pack()
+        else:
+            no_task_label = tk.Label(self.admin_tasks_frame, text="暂无管理员身份计划任务。")
+            no_task_label.pack()
 
 
 if __name__ == "__main__":
