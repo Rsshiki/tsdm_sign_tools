@@ -3,7 +3,7 @@ import time
 import shutil
 import logging
 from browser_driver import setup_driver
-from config_handler import load_config, save_config
+from config_handler import load_config
 from sign_work import perform_sign, perform_work, calculate_work_time
 from scheduled_task import create_login_startup_task, create_scheduled_task
 

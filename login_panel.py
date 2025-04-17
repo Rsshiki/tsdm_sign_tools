@@ -4,7 +4,7 @@ import logging
 import tkinter as tk
 from tkinter import messagebox
 from selenium.webdriver.common.by import By
-from config_handler import load_config, save_config, update_browser_info
+from config_handler import load_config, save_config
 from selenium.webdriver.support.ui import WebDriverWait
 from browser_driver import setup_driver, update_geckodriver
 from selenium.webdriver.support import expected_conditions as EC
