@@ -1,4 +1,6 @@
 import os
+import sys
+import shutil
 import logging
 import tempfile
 from selenium import webdriver
@@ -9,6 +11,13 @@ from config_handler import load_config, update_browser_info
 
 # 配置 Python 日志，方便调试
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# 判断是脚本运行还是 exe 运行，获取对应目录
+if getattr(sys, 'frozen', False):
+    base_path = os.path.dirname(sys.executable)
+else:
+    base_path = os.path.dirname(os.path.abspath(__file__))
+browser_dir = os.path.join(base_path, 'browserdriver')
 
 def extract_version_from_path(driver_path):
     """从驱动路径中提取版本号"""
@@ -37,8 +46,23 @@ def setup_driver(headless=True): #True为无头模式，False为有头模式
             # logging.info(f"使用已存在的浏览器驱动: {geckodriver_path}")
             pass     
         else:
-            manager = GeckoDriverManager()
-            geckodriver_path = manager.install()
+            # 下载驱动到默认路径
+            default_driver_path = GeckoDriverManager().install()
+            # 获取驱动所在的文件夹
+            default_driver_folder = os.path.dirname(default_driver_path)
+
+            # 确保自定义目录存在
+            if not os.path.exists(browser_dir):
+                os.makedirs(browser_dir)
+
+            # 生成移动后的目标文件夹路径
+            folder_name = os.path.basename(default_driver_folder)
+            target_folder = os.path.join(browser_dir, folder_name)
+
+            # 移动整个文件夹
+            shutil.move(default_driver_folder, target_folder)
+            # 更新驱动路径
+            geckodriver_path = os.path.join(target_folder, os.path.basename(default_driver_path))
             geckodriver_version = extract_version_from_path(geckodriver_path)
 
             browser_info = {
@@ -64,9 +88,25 @@ def setup_driver(headless=True): #True为无头模式，False为有头模式
 def update_geckodriver():
     """更新 geckodriver 并更新配置文件"""
     try:
-        manager = GeckoDriverManager()
-        geckodriver_path = manager.install()
+        # 下载驱动到默认路径
+        default_driver_path = GeckoDriverManager().install()
+        # 获取驱动所在的文件夹
+        default_driver_folder = os.path.dirname(default_driver_path)
+
+        # 确保自定义目录存在
+        if not os.path.exists(browser_dir):
+            os.makedirs(browser_dir)
+
+        # 生成移动后的目标文件夹路径
+        folder_name = os.path.basename(default_driver_folder)
+        target_folder = os.path.join(browser_dir, folder_name)
+
+        # 移动整个文件夹
+        shutil.move(default_driver_folder, target_folder)
+        # 更新驱动路径
+        geckodriver_path = os.path.join(target_folder, os.path.basename(default_driver_path))
         geckodriver_version = extract_version_from_path(geckodriver_path)
+
         browser_info = {
             'path': geckodriver_path,
             'version': geckodriver_version
