@@ -66,7 +66,6 @@ def perform_sign(driver, username, SIGN_URL):
     # 检查是否需要重新登录
     # logging.info("检查cookies是否过期")
     login_elements = driver.find_elements(By.CSS_SELECTOR, NEED_LOGIN_SIGN_CSS)
-    target_text = "您需要先登录才能继续本操作"
     for element in login_elements:
         if target_text in element.text:
             logging.info("Cookie过期，标记状态...")
@@ -129,7 +128,6 @@ def perform_work(driver, username, WORK_URL):
     # 检查cookies是否过期
     # logging.info("检查cookies是否过期")
     login_elements = driver.find_elements(By.CSS_SELECTOR, NEED_LOGIN_WORK_CSS)
-    target_text = "请先登录再进行点击任务"
     for element in login_elements:
         if target_text in element.text:
             logging.info("Cookie过期，标记状态...")
