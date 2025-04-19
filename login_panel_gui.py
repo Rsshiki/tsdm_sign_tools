@@ -186,37 +186,64 @@ class LoginTool(QWidget):
             self.account_layout.addWidget(no_account_label, alignment=Qt.AlignCenter)
             return
 
+        # 添加标题标签
+        title_label = QLabel("已记录账号信息")
+        title_label.setStyleSheet("font-weight: bold; font-size: 24px;")  # 设置标题样式
+        self.account_layout.addWidget(title_label, alignment=Qt.AlignCenter)
+
         logger.info("准备展示账号信息")
         for username in self.logged_accounts:
-            account_frame = QFrame()
-            account_layout = QHBoxLayout(account_frame)
+            # 创建一个垂直布局来包含标题和账号信息
+            account_main_layout = QVBoxLayout()
+
+            # 用户名标题
+            username_title_label = QLabel("用户名")
+            username_title_label.setStyleSheet("font-weight: bold")
+            account_main_layout.addWidget(username_title_label)
 
             # 展示用户名
             username_label = QLabel(username)
-            account_layout.addWidget(username_label)
+            account_main_layout.addWidget(username_label)
+
+            # Cookie 状态标题
+            cookie_status_title_label = QLabel("Cookie 状态")
+            cookie_status_title_label.setStyleSheet("font-weight: bold")
+            account_main_layout.addWidget(cookie_status_title_label)
 
             # 展示 cookie 状态
             is_valid = self.logged_accounts[username]["is_cookie_valid"]
             status_text = "Cookie有效" if is_valid else "Cookie过期"
             status_label = QLabel(status_text)
             status_label.setStyleSheet(f"color: {'green' if is_valid else 'red'}")
-            account_layout.addWidget(status_label)
+            account_main_layout.addWidget(status_label)
+
+            # 创建一个水平布局来放置按钮
+            button_layout = QHBoxLayout()
 
             # 重新登录按钮
             re_login_btn = QPushButton("重新登录")
             re_login_btn.clicked.connect(lambda _, u=username: self.re_login(u))
-            account_layout.addWidget(re_login_btn)
+            button_layout.addWidget(re_login_btn)
 
             # 删除账号按钮
             delete_btn = QPushButton("删除账号")
+
+            # 创建一个框架并设置布局
+            account_frame = QFrame()
+            account_frame.setLayout(account_main_layout)
+
+            # 现在 account_frame 已经创建，可以安全地连接事件
             delete_btn.clicked.connect(lambda _, u=username, f=account_frame: self.delete_account(u, f))
-            account_layout.addWidget(delete_btn)
+            button_layout.addWidget(delete_btn)
+
+            # 将按钮布局添加到主布局
+            account_main_layout.addLayout(button_layout)
 
             self.account_layout.addWidget(account_frame)
 
-            # 更新浏览器版本信息
-            self.browser_info = self.config.get("browser_info", {})
-            self.browser_version_label.setText(f"驱动版本: {self.browser_info.get('version', '未知，请先更新驱动')}")
+        # 更新浏览器版本信息
+        self.browser_info = self.config.get("browser_info", {})
+        self.browser_version_label.setText(f"驱动版本: {self.browser_info.get('version', '未知，请先更新驱动')}")
 
     def re_login(self, username):
         self.show_login_browser()
