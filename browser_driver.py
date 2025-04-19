@@ -1,21 +1,16 @@
 import os
 import sys
 import shutil
-import logging
 import tempfile
 from selenium import webdriver
+from log_config import setup_logger
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
 from webdriver_manager.firefox import GeckoDriverManager
 from config_handler import load_config, update_browser_info
 
-# 配置 Python 日志，方便调试
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    filename='tsdm_sign_tools.log',  # 日志文件路径
-    filemode='a'  # 追加模式，如果需要覆盖，请使用 'w'
-)
+# 配置日志
+logger = setup_logger('tsdm_sign_tools.log')
 
 # 判断是脚本运行还是 exe 运行，获取对应目录
 if getattr(sys, 'frozen', False):
@@ -48,7 +43,6 @@ def setup_driver(headless=True): #True为无头模式，False为有头模式
     try:
         if geckodriver_path and os.path.exists(geckodriver_path):
             # 如果配置文件中有浏览器驱动路径且文件存在，直接使用该路径
-            # logging.info(f"使用已存在的浏览器驱动: {geckodriver_path}")
             pass     
         else:
             # 下载驱动到默认路径
@@ -82,12 +76,12 @@ def setup_driver(headless=True): #True为无头模式，False为有头模式
         service = Service(executable_path=geckodriver_path)
         driver = webdriver.Firefox(service=service, options=firefox_options)
     except Exception as e:
-        logging.error(f"启动浏览器时出错: {e}")
+        logger.error(f"启动浏览器时出错: {e}")
         if user_data_dir and os.path.exists(user_data_dir):
             try:
                 os.rmdir(user_data_dir)
             except Exception as rm_error:
-                logging.error(f"删除用户数据目录时出错: {rm_error}")
+                logger.error(f"删除用户数据目录时出错: {rm_error}")
     return driver, user_data_dir
 
 def update_geckodriver():
@@ -117,8 +111,8 @@ def update_geckodriver():
             'version': geckodriver_version
         }
         update_browser_info(browser_info)
-        logging.info(f"成功更新 geckodriver 到版本 {geckodriver_version}，保存路径: {geckodriver_path}")
+        logger.info(f"成功更新 geckodriver 到版本 {geckodriver_version}，保存路径: {geckodriver_path}")
         return True
     except Exception as e:
-        logging.error(f"更新 geckodriver 时出错: {e}")
+        logger.error(f"更新 geckodriver 时出错: {e}")
         return False
