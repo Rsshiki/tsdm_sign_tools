@@ -116,8 +116,13 @@ class LoginTool:
             # 确保添加账号后更新按钮状态
             self.update_start_sign_button()
         except Exception as e:
-            logger.error(f"等待 title 为 '访问我的空间' 的元素时出错: {e}")
-            messagebox.showerror("错误", f"登录检测失败，请检查是否完成登录。错误信息: {e}")
+            error_message = str(e)
+            if "Browsing context has been discarded" in error_message:
+                # 处理用户手动关闭浏览器的情况，不报错
+                logger.info("用户手动关闭了浏览器，操作已取消。")
+            else:
+                logger.error(f"等待 title 为 '访问我的空间' 的元素时出错: {e}")
+                messagebox.showerror("错误", f"登录检测失败，请检查是否完成登录。错误信息: {e}")
         finally:
             if driver:
                 driver.quit()
