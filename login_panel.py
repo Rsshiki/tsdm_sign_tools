@@ -1,5 +1,8 @@
+import io
 import os
 import sys
+import time
+import psutil  # 用于进程监控
 from log_config import setup_logger
 from selenium.webdriver.common.by import By
 from config_handler import load_config, save_config
@@ -7,7 +10,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from browser_driver import setup_driver, update_geckodriver
 from selenium.webdriver.support import expected_conditions as EC
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                             QPushButton, QFrame, QTextEdit)
+                             QPushButton, QFrame, QTextEdit, QMessageBox)
 from PyQt5.QtCore import Qt, QTimer
 
 # 配置日志
@@ -22,6 +25,7 @@ class LoginTool(QWidget):
         self.resize(600, 400) # 初始窗口大小
         self.log_file_path = 'tsdm_sign_tools.log'
         self.last_log_size = 0  # 新增属性，记录上一次读取的文件大小
+        self.sign_process = None  # 存储签到进程
         self.initUI()
         # 设置定时器，每秒更新一次日志
         self.timer = QTimer(self)
@@ -295,18 +299,59 @@ class LoginTool(QWidget):
             no_task_label = QLabel("无管理员身份计划任务。")
             self.admin_tasks_layout.addWidget(no_task_label, alignment=Qt.AlignCenter)
 
+    def start_sign(self, exe_path):
+        try:
+            os.startfile(exe_path)
+            # 查找 tsdm_sign_tools.exe 进程
+            for proc in psutil.process_iter(['name']):
+                if proc.info['name'] == 'tsdm_sign_tools.exe':
+                    self.sign_process = proc
+                    break
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"启动签到程序失败: {e}")
+
     def update_log_display(self):
         if os.path.exists(self.log_file_path):
-            with open(self.log_file_path, 'r', encoding='utf-8') as f:
-                f.seek(0, os.SEEK_END)
-                current_size = f.tell()  # 获取当前文件大小
-                if current_size > self.last_log_size:
-                    f.seek(self.last_log_size)  # 移动到上次读取的位置
-                    new_log_content = f.read()
-                    self.log_text_edit.append(new_log_content)  # 追加新的日志内容
-                    self.last_log_size = current_size  # 更新上次读取的文件大小
-                # 滚动到文本末尾
-                self.log_text_edit.moveCursor(self.log_text_edit.textCursor().End)
+            is_sign_running = self.is_sign_process_running()
+            max_retries = 3
+            retries = 0
+            while retries < max_retries:
+                try:
+                    if is_sign_running:
+                        # 签到进程运行时，只读模式读取
+                        with io.open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            f.seek(0, os.SEEK_END)
+                            current_size = f.tell()
+                            if current_size > self.last_log_size:
+                                f.seek(self.last_log_size)
+                                new_log_content = ''.join([line.strip() + '\n' for line in f.readlines()])
+                                self.log_text_edit.insertPlainText(new_log_content)
+                                self.last_log_size = current_size
+                    else:
+                        # 签到进程结束后，可进行读写操作（这里主要是读取显示）
+                        with open(self.log_file_path, 'r', encoding='utf-8') as f:
+                            f.seek(0, os.SEEK_END)
+                            current_size = f.tell()
+                            if current_size > self.last_log_size:
+                                f.seek(self.last_log_size)
+                                new_log_content = ''.join([line.strip() + '\n' for line in f.readlines()])
+                                self.log_text_edit.insertPlainText(new_log_content)
+                                self.last_log_size = current_size
+                    self.log_text_edit.moveCursor(self.log_text_edit.textCursor().End)
+                    break
+                except Exception as e:
+                    retries += 1
+                    time.sleep(0.1)
+                    if retries == max_retries:
+                        QMessageBox.warning(self, "警告", f"读取日志文件时出错: {e}")
+
+    def is_sign_process_running(self):
+        if self.sign_process:
+            try:
+                return self.sign_process.is_running()
+            except psutil.NoSuchProcess:
+                self.sign_process = None
+        return False
 
     def clear_log(self):
         if os.path.exists(self.log_file_path):
