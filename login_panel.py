@@ -24,11 +24,23 @@ class LoginTool(QWidget):
     def initUI(self):
         self.setWindowTitle("天使动漫论坛登录工具")
 
-        # 创建开始签到按钮
+        # 创建开始签到按钮并设置点击事件
         self.start_sign_button = QPushButton("开始签到")
+        # 判断是否打包成 EXE
+        if getattr(sys, 'frozen', False):
+            # 如果是打包后的 EXE，获取 EXE 所在目录
+            base_path = os.path.dirname(sys.executable)
+            file_name = 'tsdm_sign_tools.exe'
+        else:
+            # 如果是未打包的 Python 脚本，获取脚本所在目录
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            file_name = 'tsdm_sign_tools.py'
+
+        exe_path = os.path.join(base_path, file_name)
+        self.start_sign_button.clicked.connect(lambda: os.startfile(exe_path))
         self.start_sign_button.setEnabled(False)  # 初始设置为不可点击
         self.start_sign_button.hide()  # 初始设置为隐藏
-
+        
         self.load_configuration()  # 调用加载配置的方法
 
         # 主布局
@@ -85,43 +97,27 @@ class LoginTool(QWidget):
         self.update_start_sign_button()
 
     def update_start_sign_button(self):
-        """
-        根据程序是否打包成 EXE 以及是否存在已登录账号，更新 '开始签到' 按钮的状态。
-        如果满足条件则创建并添加按钮，不满足则删除按钮。
-        """
-        # 判断是否打包成 EXE，getattr(sys, 'frozen', False) 在程序打包成 EXE 时会返回 True
+        # 判断是否打包成 EXE
         if getattr(sys, 'frozen', False):
             # 如果是打包后的 EXE，获取 EXE 所在目录
             base_path = os.path.dirname(sys.executable)
             file_name = 'tsdm_sign_tools.exe'
-        else: #编辑代码时测试用
+        else:
             # 如果是未打包的 Python 脚本，获取脚本所在目录
             base_path = os.path.dirname(os.path.abspath(__file__))
             file_name = 'tsdm_sign_tools.py'
 
-        # 拼接可执行文件的完整路径
         exe_path = os.path.join(base_path, file_name)
-        # 检查拼接后的文件是否存在
         is_file_exist = os.path.isfile(exe_path)
 
-        logger.info(f"可执行文件路径: {exe_path}，是否存在: {is_file_exist}")
-        logger.info(f"已登录账号数量: {len(self.logged_accounts)}")
-
-        # 当可执行文件存在且有已登录的账号时
         if is_file_exist and self.logged_accounts:
             self.start_sign_button.setEnabled(True)  # 设置为可点击
             self.start_sign_button.show()  # 显示按钮
-            if getattr(sys, 'frozen', False):
-                self.start_sign_button.clicked.connect(lambda: os.startfile(exe_path))
-                logger.info("已将 '开始签到' 按钮点击事件连接到打开 EXE 文件操作")
-            else: #编辑代码时测试用
-                # 未打包时，使用 subprocess.Popen 启动 Python 脚本
-                import subprocess
-                self.start_sign_button.clicked.connect(lambda: subprocess.Popen(['python', exe_path]))
-                logger.info("已将 '开始签到' 按钮点击事件连接到启动 Python 脚本操作")
+            logger.info("'开始签到' 按钮已显示并启用")
         else:
             self.start_sign_button.setEnabled(False)  # 设置为不可点击
             self.start_sign_button.hide()  # 隐藏按钮
+
 
     def show_login_browser(self):
         driver, user_data_dir = setup_driver(headless=False)  # 通常添加账号时不需要无头模式
