@@ -10,7 +10,12 @@ from webdriver_manager.firefox import GeckoDriverManager
 from config_handler import load_config, update_browser_info
 
 # 配置 Python 日志，方便调试
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename='tsdm_sign_tools.log',  # 日志文件路径
+    filemode='a'  # 追加模式，如果需要覆盖，请使用 'w'
+)
 
 # 判断是脚本运行还是 exe 运行，获取对应目录
 if getattr(sys, 'frozen', False):

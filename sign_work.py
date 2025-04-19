@@ -8,7 +8,12 @@ from config_handler import load_config, save_config
 from selenium.webdriver.support import expected_conditions as EC
 
 # 配置日志
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename='tsdm_sign_tools.log',  # 日志文件路径
+    filemode='a'  # 追加模式，如果需要覆盖，请使用 'w'
+)
 
 # 签到页面选择器
 NEED_LOGIN_SIGN_CSS = '#messagetext.alert_info p'

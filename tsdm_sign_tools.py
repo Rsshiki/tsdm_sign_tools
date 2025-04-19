@@ -8,7 +8,12 @@ from sign_work import perform_sign, perform_work, calculate_work_time
 from scheduled_task import create_login_startup_task, create_scheduled_task
 
 # 配置日志
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename='tsdm_sign_tools.log',  # 日志文件路径
+    filemode='a'  # 追加模式，如果需要覆盖，请使用 'w'
+)
 
 SIGN_URL = 'https://www.tsdm39.com/plugin.php?id=dsu_paulsign:sign'
 WORK_URL = 'https://www.tsdm39.com/plugin.php?id=np_cliworkdz:work'
