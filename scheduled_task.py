@@ -1,3 +1,4 @@
+import os
 import re
 import sys
 import ctypes
@@ -26,10 +27,13 @@ def create_scheduled_task(next_work_time):
     task_name = f"TS_DmWork_{next_work_time.strftime('%Y%m%d%H%M00')}"
     # 转义路径中的特殊字符
     exe_path = sys.executable.replace("\\", "\\\\")
+    # 获取 exe 文件所在目录
+    exe_dir = os.path.dirname(sys.executable).replace("\\", "\\\\")
     # 构建schtasks命令，时间格式精确到秒
     st_time = next_work_time.strftime("%H:%M:00")
     sd_date = next_work_time.strftime("%Y-%m-%d")
-    command = f'schtasks /Create /TN "{task_name}" /TR "{exe_path}" /SC ONCE /ST {st_time} /SD {sd_date}'
+ # 修改命令，添加 /RL 参数指定运行目录
+    command = f'schtasks /Create /TN "{task_name}" /TR "cmd /C cd /d "{exe_dir}" && "{exe_path}"" /SC ONCE /ST {st_time} /SD {sd_date}'
 
     try:
         # 清除之前创建的单次任务
@@ -135,7 +139,8 @@ def create_login_startup_task():
     """检查是否有用户登录后自动启动的计划任务，没有则创建"""
     task_name = "TS_DmWork_LoginStartup"
     exe_path = sys.executable.replace("\\", "\\\\")
-    command = f'schtasks /Create /TN "{task_name}" /TR "{exe_path}" /SC ONLOGON'
+    exe_dir = os.path.dirname(sys.executable).replace("\\", "\\\\")
+    command = f'schtasks /Create /TN "{task_name}" /TR "cmd /C cd /d "{exe_dir}" && "{exe_path}"" /SC ONLOGON'
 
     try:
         # 检查任务是否已经存在
