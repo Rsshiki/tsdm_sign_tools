@@ -1,8 +1,4 @@
-# Web浏览器自动化核心库
-selenium>=4.0.0  # 支持显式等待、元素定位等特性（By, WebDriverWait, EC等）
 
-# 浏览器驱动自动管理
-webdriver-manager>=4.0.0  # 自动下载/更新GeckoDriver（browser_driver.py使用）
-
-# 若需要打包为exe可添加
-pyinstaller>=6.0.0  # 生成独立可执行文件
+selenium>=4.0.0
+webdriver-manager>=4.0.0
+pyinstaller>=6.0.0
