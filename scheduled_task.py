@@ -10,6 +10,42 @@ from config_handler import load_config, update_scheduled_tasks
 # 初始化日志记录器
 logger = setup_logger('tsdm_sign_tools.log')
 
+def create_vbs_script():
+    """
+    创建 VBS 脚本来运行 tsdm_sign_tools.exe
+    返回 VBS 脚本的完整路径，如果创建失败则返回 None
+    """
+    # 处理打包后的情况
+    if getattr(sys, 'frozen', False):
+        # 如果是打包后的程序
+        exe_dir = os.path.dirname(sys.executable)
+    else:
+        # 如果是未打包的程序
+        exe_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    exe_path = os.path.join(exe_dir, "tsdm_sign_tools.exe")
+    # 构建 VBS 脚本的完整路径
+    vbs_path = os.path.join(exe_dir, "run_tsdm_sign_tools.vbs")
+    # 检查 VBS 脚本是否已经存在
+    if os.path.exists(vbs_path):
+        logger.info(f"VBS 脚本已存在: {vbs_path}")
+        return vbs_path
+
+    # 定义 VBS 脚本内容，设置工作目录并运行程序
+    vbs_content = f'''
+Set objShell = CreateObject("WScript.Shell")
+objShell.CurrentDirectory = "{exe_dir}"
+objShell.Run "{exe_path}"
+'''
+    try:
+        with open(vbs_path, 'w', encoding='utf-8') as f:
+            f.write(vbs_content.strip())
+        logger.info(f"成功创建 VBS 脚本: {vbs_path}")
+        return vbs_path
+    except Exception as e:
+        logger.error(f"创建 VBS 脚本时出错: {e}")
+        return None
+
 def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
@@ -17,7 +53,13 @@ def is_admin():
         return False
 
 def create_scheduled_task(next_work_time):
-    """创建Windows计划任务"""
+    """创建Windows计划任务来运行 VBS 脚本"""
+    # 创建或获取 VBS 脚本路径
+    vbs_path = create_vbs_script()
+    if not vbs_path:
+        logger.error("无法创建或获取 VBS 脚本，无法创建计划任务")
+        return None
+    
     # 如果秒数大于 0，将时间向上进位到下一分钟
     if next_work_time.second > 0 or next_work_time.microsecond > 0:
         next_work_time = next_work_time + timedelta(minutes=1)
@@ -25,16 +67,14 @@ def create_scheduled_task(next_work_time):
 
     # 生成任务名称（基于下次执行时间）
     task_name = f"TS_DmWork_{next_work_time.strftime('%Y%m%d%H%M00')}"
-    # 转义路径中的特殊字符
-    exe_path = sys.executable.replace("\\", "\\\\")
-    # 获取 exe 文件所在目录
-    exe_dir = os.path.dirname(sys.executable).replace("\\", "\\\\")
+    # 转义 VBS 脚本路径
+    vbs_path_escaped = vbs_path.replace('\\', '\\\\')
+
     # 构建schtasks命令，时间格式精确到秒
     st_time = next_work_time.strftime("%H:%M:00")
     sd_date = next_work_time.strftime("%Y-%m-%d")
  # 修改命令，添加 /RL 参数指定运行目录
-    command = f'schtasks /Create /TN "{task_name}" /TR "cmd /C cd /d "{exe_dir}" && "{exe_path}"" /SC ONCE /ST {st_time} /SD {sd_date}'
-
+    command = f'schtasks /Create /TN "{task_name}" /TR "wscript.exe "{vbs_path_escaped}"" /SC ONCE /ST {st_time} /SD {sd_date}'
     try:
         # 清除之前创建的单次任务
         clear_previous_scheduled_tasks()
@@ -136,11 +176,16 @@ def clear_previous_scheduled_tasks():
         logger.error(f"清除计划任务时发生未知错误: {e}")
 
 def create_login_startup_task():
-    """检查是否有用户登录后自动启动的计划任务，没有则创建"""
+    """检查是否有用户登录后自动启动的计划任务，没有则创建来运行 VBS 脚本"""
+    # 创建或获取 VBS 脚本路径
+    vbs_path = create_vbs_script()
+    if not vbs_path:
+        logger.error("无法创建或获取 VBS 脚本，无法创建开机启动任务")
+        return None
     task_name = "TS_DmWork_LoginStartup"
-    exe_path = sys.executable.replace("\\", "\\\\")
-    exe_dir = os.path.dirname(sys.executable).replace("\\", "\\\\")
-    command = f'schtasks /Create /TN "{task_name}" /TR "cmd /C cd /d "{exe_dir}" && "{exe_path}"" /SC ONLOGON'
+    # 转义 VBS 脚本路径
+    vbs_path_escaped = vbs_path.replace('\\', '\\\\')
+    command = f'schtasks /Create /TN "{task_name}" /TR "wscript.exe "{vbs_path_escaped}"" /SC ONLOGON'
 
     try:
         # 检查任务是否已经存在
