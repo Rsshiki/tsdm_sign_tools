@@ -157,7 +157,7 @@ def perform_work(driver, username, WORK_URL):
                     original_window = driver.current_window_handle
                     # logging.info(f"点击打工按钮: {button_id}")
                     button.click()
-                    time.sleep(random.uniform(1, 3))
+                    time.sleep(random.uniform(1, 2))
 
                     driver.switch_to.window(original_window) # 切换回原始窗口
 
