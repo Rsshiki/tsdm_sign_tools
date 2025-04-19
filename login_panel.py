@@ -21,11 +21,9 @@ class LoginTool(QWidget):
         self.resize(600, 400) # 初始窗口大小
         self.initUI()
 
-    def initUI(self):
-        self.setWindowTitle("天使动漫论坛登录工具")
-
-        # 创建开始签到按钮并设置点击事件
-        self.start_sign_button = QPushButton("开始签到")
+    def get_executable_path_info(self):
+        # 获取当前脚本的绝对路径
+        
         # 判断是否打包成 EXE
         if getattr(sys, 'frozen', False):
             # 如果是打包后的 EXE，获取 EXE 所在目录
@@ -35,7 +33,14 @@ class LoginTool(QWidget):
             # 如果是未打包的 Python 脚本，获取脚本所在目录
             base_path = os.path.dirname(os.path.abspath(__file__))
             file_name = 'tsdm_sign_tools.py'
+        return base_path, file_name
+    
+    def initUI(self):
+        self.setWindowTitle("天使动漫论坛登录工具")
 
+        # 创建开始签到按钮并设置点击事件
+        self.start_sign_button = QPushButton("开始签到")
+        base_path, file_name = self.get_executable_path_info()
         exe_path = os.path.join(base_path, file_name)
         self.start_sign_button.clicked.connect(lambda: os.startfile(exe_path))
         self.start_sign_button.setEnabled(False)  # 初始设置为不可点击
@@ -92,32 +97,20 @@ class LoginTool(QWidget):
         self.logged_accounts = self.config.get("accounts", {})
         self.browser_info = self.config.get("browser_info", {})
         self.admin_scheduled_tasks = self.config.get("scheduled_tasks", [])
-        logger.info("已读取加载的账号信息")
-        # 加载配置后更新按钮状态
-        self.update_start_sign_button()
+        logger.info("读取配置文件")
 
     def update_start_sign_button(self):
         # 判断是否打包成 EXE
-        if getattr(sys, 'frozen', False):
-            # 如果是打包后的 EXE，获取 EXE 所在目录
-            base_path = os.path.dirname(sys.executable)
-            file_name = 'tsdm_sign_tools.exe'
-        else:
-            # 如果是未打包的 Python 脚本，获取脚本所在目录
-            base_path = os.path.dirname(os.path.abspath(__file__))
-            file_name = 'tsdm_sign_tools.py'
-
+        base_path, file_name = self.get_executable_path_info()
         exe_path = os.path.join(base_path, file_name)
         is_file_exist = os.path.isfile(exe_path)
 
         if is_file_exist and self.logged_accounts:
             self.start_sign_button.setEnabled(True)  # 设置为可点击
             self.start_sign_button.show()  # 显示按钮
-            logger.info("'开始签到' 按钮已显示并启用")
         else:
             self.start_sign_button.setEnabled(False)  # 设置为不可点击
             self.start_sign_button.hide()  # 隐藏按钮
-
 
     def show_login_browser(self):
         driver, user_data_dir = setup_driver(headless=False)  # 通常添加账号时不需要无头模式
@@ -187,7 +180,7 @@ class LoginTool(QWidget):
         title_label.setStyleSheet("font-weight: bold; font-size: 24px;")  # 设置标题样式
         self.account_layout.addWidget(title_label, alignment=Qt.AlignCenter)
 
-        logger.info("准备展示账号信息")
+        logger.info("面板加载")
         for username in self.logged_accounts:
             # 创建一个垂直布局来包含标题和账号信息
             account_main_layout = QVBoxLayout()
@@ -240,7 +233,7 @@ class LoginTool(QWidget):
         # 更新浏览器版本信息
         self.browser_info = self.config.get("browser_info", {})
         self.browser_version_label.setText(f"驱动版本: {self.browser_info.get('version', '未知，请先更新驱动')}")
-
+        logger.info("面板加载完成")
     def re_login(self, username):
         self.show_login_browser()
 
