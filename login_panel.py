@@ -1,8 +1,8 @@
 import os
 import sys
-import logging
 import tkinter as tk
 from tkinter import messagebox
+from log_config import setup_logger
 from selenium.webdriver.common.by import By
 from config_handler import load_config, save_config
 from selenium.webdriver.support.ui import WebDriverWait
@@ -10,12 +10,7 @@ from browser_driver import setup_driver, update_geckodriver
 from selenium.webdriver.support import expected_conditions as EC
 
 # 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    filename='tsdm_sign_tools.log',  # 日志文件路径
-    filemode='a'  # 追加模式，如果需要覆盖，请使用 'w'
-)
+logger = setup_logger('tsdm_sign_tools.log')
 
 LOGIN_URL = 'https://www.tsdm39.com/member.php?mod=logging&action=login'
 
@@ -60,7 +55,7 @@ class LoginTool:
         self.logged_accounts = self.config.get("accounts", {})
         self.browser_info = self.config.get("browser_info", {})
         self.admin_scheduled_tasks = self.config.get("scheduled_tasks", [])
-        logging.info("已读取加载的账号信息")
+        logger.info("已读取加载的账号信息")
         # 加载配置后更新按钮状态
         self.update_start_sign_button()
 
@@ -99,7 +94,7 @@ class LoginTool:
 
         try:
             driver.get(LOGIN_URL)
-            logging.info("已打开登录页面")
+            logger.info("已打开登录页面")
 
             # 等待 title 属性包含 "访问我的空间" 的 a 标签出现
             space_link_element = WebDriverWait(driver, 300).until(
@@ -107,11 +102,11 @@ class LoginTool:
             )
             # 获取用户名，即 <a> 标签内的文本
             username = space_link_element.text.strip()
-            logging.info(f"成功获取用户名: {username}")
+            logger.info(f"成功获取用户名: {username}")
 
             # 获取 cookies
             cookies = driver.get_cookies()
-            logging.info("成功获取 cookies")
+            logger.info("成功获取 cookies")
 
             self.add_account(username, cookies)
             self.save_config_changes()
@@ -121,7 +116,7 @@ class LoginTool:
             # 确保添加账号后更新按钮状态
             self.update_start_sign_button()
         except Exception as e:
-            logging.error(f"等待 title 为 '访问我的空间' 的元素时出错: {e}")
+            logger.error(f"等待 title 为 '访问我的空间' 的元素时出错: {e}")
             messagebox.showerror("错误", f"登录检测失败，请检查是否完成登录。错误信息: {e}")
         finally:
             if driver:
@@ -150,7 +145,7 @@ class LoginTool:
             no_account_label.pack()
             return
 
-        logging.info("准备展示账号信息")
+        logger.info("准备展示账号信息")
         for username in self.logged_accounts:
             account_frame = tk.Frame(self.account_frame)
             account_frame.pack(pady=5)

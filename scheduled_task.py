@@ -3,7 +3,11 @@ import sys
 import ctypes
 import subprocess
 from datetime import timedelta
+from log_config import setup_logger
 from config_handler import load_config, update_scheduled_tasks
+
+# 初始化日志记录器
+logger = setup_logger('tsdm_sign_tools.log')
 
 def is_admin():
     try:
@@ -40,7 +44,6 @@ def create_scheduled_task(next_work_time):
             stdout=subprocess.PIPE,  # 捕获标准输出
             stderr=subprocess.PIPE   # 捕获标准错误
         )
-        # print(f"任务 {task_name} 创建成功，输出信息: {result.stdout.decode('gbk', errors='ignore')}")
 
         if is_admin():
             config = load_config()
@@ -58,12 +61,12 @@ def create_scheduled_task(next_work_time):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            print(f"{verify_result.stdout.decode('gbk', errors='ignore')}")
+            logger.info(f"{verify_result.stdout.decode('gbk', errors='ignore')}")
         except subprocess.CalledProcessError as e:
-            print(f"验证任务 {task_name} 存在时出错: {e.stderr.decode('gbk', errors='ignore')}")
+            logger.error(f"验证任务 {task_name} 存在时出错: {e.stderr.decode('gbk', errors='ignore')}")
     except subprocess.CalledProcessError as e:
-        print(f"创建计划任务失败，命令: {command}")
-        print(f"错误输出: {e.stderr.decode('gbk', errors='ignore')}")  # 打印错误信息
+        logger.error(f"创建计划任务失败，命令: {command}")
+        logger.error(f"错误输出: {e.stderr.decode('gbk', errors='ignore')}")  # 打印错误信息
         return None
 
 def clear_previous_scheduled_tasks():
@@ -82,7 +85,7 @@ def clear_previous_scheduled_tasks():
             stderr=subprocess.PIPE
         )
         if result.returncode != 0:
-            print(f"执行 schtasks /Query 命令出错: {result.stderr.decode('gbk', errors='ignore')}")
+            logger.error(f"执行 schtasks /Query 命令出错: {result.stderr.decode('gbk', errors='ignore')}")
             return
         # 使用 gbk 解码并去除多余空白字符
         output = result.stdout.decode('gbk', errors='ignore')
@@ -117,7 +120,6 @@ def clear_previous_scheduled_tasks():
                     stderr=subprocess.PIPE
                 )
             except subprocess.CalledProcessError as e:
-                # print(f"删除任务 {full_task_name} 时出错: {e.stderr.decode('gbk', errors='ignore')}")
                 if task not in admin_tasks:
                     failed_tasks.append(task)
 
@@ -127,7 +129,7 @@ def clear_previous_scheduled_tasks():
             update_scheduled_tasks(new_scheduled_tasks)
 
     except Exception as e:
-        print(f"清除计划任务时发生未知错误: {e}")
+        logger.error(f"清除计划任务时发生未知错误: {e}")
 
 def create_login_startup_task():
     """检查是否有用户登录后自动启动的计划任务，没有则创建"""
@@ -144,7 +146,7 @@ def create_login_startup_task():
             stderr=subprocess.PIPE
         )
         if result.returncode == 0:
-            print(f"开机启动任务已存在。")
+            logger.info(f"开机启动任务已存在。")
             return task_name
 
         # 以管理员权限执行命令创建任务
@@ -156,7 +158,7 @@ def create_login_startup_task():
             stdout=subprocess.PIPE,  # 捕获标准输出
             stderr=subprocess.PIPE   # 捕获标准错误
         )
-        print(f"创建开机自动启动任务 {task_name} 创建成功。")
+        logger.info(f"创建开机自动启动任务 {task_name} 创建成功。")
 
         if is_admin():
             config = load_config()
@@ -167,5 +169,5 @@ def create_login_startup_task():
 
         return task_name
     except subprocess.CalledProcessError as e:
-        print(f"创建开机自动启动任务失败，需要管理员身份运行")
-        print(f"错误输出: {e.stderr.decode('gbk', errors='ignore')}")
+        logger.error(f"创建开机自动启动任务失败，需要管理员身份运行")
+        logger.error(f"错误输出: {e.stderr.decode('gbk', errors='ignore')}")
