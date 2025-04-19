@@ -6,8 +6,9 @@ from config_handler import load_config, save_config
 from selenium.webdriver.support.ui import WebDriverWait
 from browser_driver import setup_driver, update_geckodriver
 from selenium.webdriver.support import expected_conditions as EC
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame
-from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                             QPushButton, QFrame, QTextEdit)
+from PyQt5.QtCore import Qt, QTimer
 
 # 配置日志
 logger = setup_logger('tsdm_sign_tools.log')
@@ -19,11 +20,15 @@ class LoginTool(QWidget):
     def __init__(self):
         super().__init__()
         self.resize(600, 400) # 初始窗口大小
+        self.log_file_path = 'tsdm_sign_tools.log'
+        self.last_log_size = 0  # 新增属性，记录上一次读取的文件大小
         self.initUI()
+        # 设置定时器，每秒更新一次日志
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_log_display)
+        self.timer.start(1000)
 
     def get_executable_path_info(self):
-        # 获取当前脚本的绝对路径
-        
         # 判断是否打包成 EXE
         if getattr(sys, 'frozen', False):
             # 如果是打包后的 EXE，获取 EXE 所在目录
@@ -88,6 +93,16 @@ class LoginTool(QWidget):
         main_layout.addLayout(bottom_layout)
 
         self.display_logged_accounts()
+
+        # 添加运行日志框
+        self.log_text_edit = QTextEdit()
+        self.log_text_edit.setReadOnly(True)
+        main_layout.addWidget(self.log_text_edit)
+
+        # 添加清空日志按钮
+        clear_log_button = QPushButton("清空日志")
+        clear_log_button.clicked.connect(self.clear_log)
+        main_layout.addWidget(clear_log_button)
 
         self.setLayout(main_layout)
         self.update_start_sign_button()
@@ -280,6 +295,24 @@ class LoginTool(QWidget):
             no_task_label = QLabel("无管理员身份计划任务。")
             self.admin_tasks_layout.addWidget(no_task_label, alignment=Qt.AlignCenter)
 
+    def update_log_display(self):
+        if os.path.exists(self.log_file_path):
+            with open(self.log_file_path, 'r', encoding='utf-8') as f:
+                f.seek(0, os.SEEK_END)
+                current_size = f.tell()  # 获取当前文件大小
+                if current_size > self.last_log_size:
+                    f.seek(self.last_log_size)  # 移动到上次读取的位置
+                    new_log_content = f.read()
+                    self.log_text_edit.append(new_log_content)  # 追加新的日志内容
+                    self.last_log_size = current_size  # 更新上次读取的文件大小
+                # 滚动到文本末尾
+                self.log_text_edit.moveCursor(self.log_text_edit.textCursor().End)
+
+    def clear_log(self):
+        if os.path.exists(self.log_file_path):
+            with open(self.log_file_path, 'w') as f:
+                f.truncate(0)
+            self.log_text_edit.clear()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
