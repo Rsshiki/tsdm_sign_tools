@@ -18,20 +18,21 @@ LOGIN_URL = 'https://www.tsdm39.com/member.php?mod=logging&action=login'
 class LoginTool(QWidget):
     def __init__(self):
         super().__init__()
+        self.resize(600, 400) # 初始窗口大小
         self.initUI()
 
     def initUI(self):
-        self.setWindowTitle("TSDM 登录工具")
-        # 初始化开始签到按钮为 None
-        self.start_sign_button = None
+        self.setWindowTitle("天使动漫论坛登录工具")
+
+        # 创建开始签到按钮
+        self.start_sign_button = QPushButton("开始签到")
+        self.start_sign_button.setEnabled(False)  # 初始设置为不可点击
+        self.start_sign_button.hide()  # 初始设置为隐藏
+
         self.load_configuration()  # 调用加载配置的方法
 
         # 主布局
         main_layout = QVBoxLayout()
-
-        # 显示浏览器版本信息的标签
-        self.browser_version_label = QLabel(f"浏览器驱动版本: {self.browser_info.get('version', '未知')}")
-        main_layout.addWidget(self.browser_version_label, alignment=Qt.AlignCenter)
 
         # 展示面板
         self.account_frame = QFrame()
@@ -43,22 +44,36 @@ class LoginTool(QWidget):
         main_layout.addWidget(self.admin_tasks_frame)
         self.display_admin_scheduled_tasks()
 
-        # 初始检查并更新按钮状态
-        self.update_start_sign_button()
+        # 底部水平布局
+        bottom_layout = QHBoxLayout()
+
+        # 显示浏览器版本信息的标签，放到底部左下角
+        self.browser_version_label = QLabel(f"驱动版本: {self.browser_info.get('version', '未知，请先更新驱动')}") 
+        bottom_layout.addWidget(self.browser_version_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+
+        # 添加伸缩项，将后续按钮推到右侧
+        bottom_layout.addStretch()
+
+        # 开始签到按钮
+        bottom_layout.addWidget(self.start_sign_button)
 
         # 底部添加按钮
-        self.add_button = QPushButton("添加新账号")
+        self.add_button = QPushButton("添加账号")
         self.add_button.clicked.connect(self.show_login_browser)
-        main_layout.addWidget(self.add_button)
+        bottom_layout.addWidget(self.add_button)
 
         # 添加更新 geckodriver 按钮
-        self.update_button = QPushButton("更新浏览器驱动")
+        self.update_button = QPushButton("更新驱动")
         self.update_button.clicked.connect(self.update_driver)
-        main_layout.addWidget(self.update_button)
+        bottom_layout.addWidget(self.update_button)
+
+        # 将底部布局添加到主布局
+        main_layout.addLayout(bottom_layout)
 
         self.display_logged_accounts()
 
         self.setLayout(main_layout)
+        self.update_start_sign_button()
 
     def load_configuration(self):
         self.config = load_config()
@@ -94,35 +109,19 @@ class LoginTool(QWidget):
 
         # 当可执行文件存在且有已登录的账号时
         if is_file_exist and self.logged_accounts:
-            # 如果 '开始签到' 按钮还未创建
-            if self.start_sign_button is None:
-                # 创建 '开始签到' 按钮
-                self.start_sign_button = QPushButton("开始签到")
-                logger.info("'开始签到' 按钮已创建")
-                # 根据程序是否打包成 EXE 绑定不同的点击事件
-                if getattr(sys, 'frozen', False):
-                    self.start_sign_button.clicked.connect(lambda: os.startfile(exe_path))
-                    logger.info("已将 '开始签到' 按钮点击事件连接到打开 EXE 文件操作")
-                else: #编辑代码时测试用
-                    # 未打包时，使用 subprocess.Popen 启动 Python 脚本
-                    import subprocess
-                    self.start_sign_button.clicked.connect(lambda: subprocess.Popen(['python', exe_path]))
-                    logger.info("已将 '开始签到' 按钮点击事件连接到启动 Python 脚本操作")
-                # 获取当前窗口的布局
-                layout = self.layout()
-                # 检查布局是否为 None，避免后续操作出错
-                if layout is not None:
-                    logger.info("布局已正确获取")
-                    # 获取 '添加新账号' 按钮在布局中的索引
-                    index = layout.indexOf(self.add_button)
-                    if index != -1:
-                        logger.info(f"'添加新账号' 按钮的索引为 {index}，准备插入 '开始签到' 按钮")
-                        layout.insertWidget(index, self.start_sign_button)
-                else:
-                    # 布局未正确设置时，记录错误日志
-                    logger.error("未找到 '添加新账号' 按钮在布局中的索引")
+            self.start_sign_button.setEnabled(True)  # 设置为可点击
+            self.start_sign_button.show()  # 显示按钮
+            if getattr(sys, 'frozen', False):
+                self.start_sign_button.clicked.connect(lambda: os.startfile(exe_path))
+                logger.info("已将 '开始签到' 按钮点击事件连接到打开 EXE 文件操作")
+            else: #编辑代码时测试用
+                # 未打包时，使用 subprocess.Popen 启动 Python 脚本
+                import subprocess
+                self.start_sign_button.clicked.connect(lambda: subprocess.Popen(['python', exe_path]))
+                logger.info("已将 '开始签到' 按钮点击事件连接到启动 Python 脚本操作")
         else:
-            logger.error("布局未正确设置，无法插入开始签到按钮")
+            self.start_sign_button.setEnabled(False)  # 设置为不可点击
+            self.start_sign_button.hide()  # 隐藏按钮
 
     def show_login_browser(self):
         driver, user_data_dir = setup_driver(headless=False)  # 通常添加账号时不需要无头模式
@@ -161,6 +160,12 @@ class LoginTool(QWidget):
                 logger.error(f"等待 title 为 '访问我的空间' 的元素时出错: {e}")
                 from PyQt5.QtWidgets import QMessageBox
                 QMessageBox.critical(self, "错误", f"登录检测失败，请检查是否完成登录。错误信息: {e}")
+        finally:
+            if driver:
+                driver.quit()
+            if user_data_dir and os.path.exists(user_data_dir):
+                import shutil
+                shutil.rmtree(user_data_dir)
 
     def add_account(self, username, cookies):
         self.logged_accounts[username] = {
@@ -176,12 +181,8 @@ class LoginTool(QWidget):
             if widget:
                 widget.deleteLater()
 
-        # 更新浏览器版本信息
-        self.browser_info = self.config.get("browser_info", {})
-        self.browser_version_label.setText(f"浏览器驱动版本: {self.browser_info.get('version', '未知')}")
-
         if not self.logged_accounts:
-            no_account_label = QLabel("暂无已登录账号，请添加新账号。")
+            no_account_label = QLabel("无账号信息")
             self.account_layout.addWidget(no_account_label, alignment=Qt.AlignCenter)
             return
 
@@ -207,15 +208,18 @@ class LoginTool(QWidget):
             account_layout.addWidget(re_login_btn)
 
             # 删除账号按钮
-            delete_btn = QPushButton("删除")
+            delete_btn = QPushButton("删除账号")
             delete_btn.clicked.connect(lambda _, u=username, f=account_frame: self.delete_account(u, f))
             account_layout.addWidget(delete_btn)
 
             self.account_layout.addWidget(account_frame)
 
+            # 更新浏览器版本信息
+            self.browser_info = self.config.get("browser_info", {})
+            self.browser_version_label.setText(f"驱动版本: {self.browser_info.get('version', '未知，请先更新驱动')}")
+
     def re_login(self, username):
-        # 这里可实现重新登录逻辑，登录成功后更新 cookie 和状态
-        pass
+        self.show_login_browser()
 
     def delete_account(self, username, frame):
         if username in self.logged_accounts:
@@ -257,7 +261,7 @@ class LoginTool(QWidget):
                 task_label = QLabel(task_name)
                 self.admin_tasks_layout.addWidget(task_label)
         else:
-            no_task_label = QLabel("暂无管理员身份计划任务。")
+            no_task_label = QLabel("无管理员身份计划任务。")
             self.admin_tasks_layout.addWidget(no_task_label, alignment=Qt.AlignCenter)
 
 
