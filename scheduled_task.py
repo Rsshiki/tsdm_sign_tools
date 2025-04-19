@@ -40,7 +40,7 @@ def create_scheduled_task(next_work_time):
             stdout=subprocess.PIPE,  # 捕获标准输出
             stderr=subprocess.PIPE   # 捕获标准错误
         )
-        print(f"任务 {task_name} 创建成功，输出信息: {result.stdout.decode('gbk', errors='ignore')}")
+        # print(f"任务 {task_name} 创建成功，输出信息: {result.stdout.decode('gbk', errors='ignore')}")
 
         if is_admin():
             config = load_config()
@@ -58,7 +58,7 @@ def create_scheduled_task(next_work_time):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            print(f"验证任务 {task_name} 存在，输出信息: {verify_result.stdout.decode('gbk', errors='ignore')}")
+            print(f"{verify_result.stdout.decode('gbk', errors='ignore')}")
         except subprocess.CalledProcessError as e:
             print(f"验证任务 {task_name} 存在时出错: {e.stderr.decode('gbk', errors='ignore')}")
     except subprocess.CalledProcessError as e:
@@ -117,7 +117,7 @@ def clear_previous_scheduled_tasks():
                     stderr=subprocess.PIPE
                 )
             except subprocess.CalledProcessError as e:
-                print(f"删除任务 {full_task_name} 时出错: {e.stderr.decode('gbk', errors='ignore')}")
+                # print(f"删除任务 {full_task_name} 时出错: {e.stderr.decode('gbk', errors='ignore')}")
                 if task not in admin_tasks:
                     failed_tasks.append(task)
 
@@ -144,7 +144,7 @@ def create_login_startup_task():
             stderr=subprocess.PIPE
         )
         if result.returncode == 0:
-            print(f"开机启动任务 {task_name} 已创建。")
+            print(f"开机启动任务已存在。")
             return task_name
 
         # 以管理员权限执行命令创建任务
