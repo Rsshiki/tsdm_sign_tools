@@ -358,6 +358,8 @@ class LoginTool(QWidget):
             with open(self.log_file_path, 'w') as f:
                 f.truncate(0)
             self.log_text_edit.clear()
+            # 重置 last_log_size 为 0
+            self.last_log_size = 0
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
