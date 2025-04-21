@@ -64,7 +64,7 @@ def update_scheduled_tasks(scheduled_tasks):
     config["scheduled_tasks"] = scheduled_tasks
     save_config(config)
 
-def update_account_info(username, cookies, is_valid=True, last_sign_time="", last_work_time=""):
+def update_account_info(username, cookies, is_valid=True, last_sign_date="", last_work_time=""):
     """
     更新用户账户信息。
     """
@@ -73,7 +73,7 @@ def update_account_info(username, cookies, is_valid=True, last_sign_time="", las
     account_categories[username] = {
         "cookies": cookies,
         "is_cookie_valid": is_valid,
-        "last_sign_time": last_sign_time,
+        "last_sign_date": last_sign_date,
         "last_work_time": last_work_time
     }
     config["account_categories"] = account_categories
