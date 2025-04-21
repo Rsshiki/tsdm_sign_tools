@@ -3,7 +3,7 @@ import os
 import sys
 import time
 import psutil  # 用于进程监控
-from datetime import datetime
+from datetime import datetime, timedelta
 from log_config import setup_logger
 from selenium.webdriver.common.by import By
 from config_handler import load_config, save_config
@@ -116,8 +116,10 @@ class LoginTool(QWidget):
         self.log_file_path = 'tsdm_sign_tools.log'
         self.last_log_size = 0  # 新增属性，记录上一次读取的文件大小
         self.logged_accounts = load_config().get('account_categories', {})
-        # 初始化 sign_process 属性
-        self.sign_process = None
+        # 初始化打工冷却时间定时器
+        self.work_cool_down_timer = QTimer(self)
+        self.work_cool_down_timer.timeout.connect(self.update_work_cool_down)
+        self.work_cool_down_timer.start(1000)
 
         self.initUI()
         # 初始化时加载配置并刷新面板
@@ -253,7 +255,7 @@ class LoginTool(QWidget):
 
     def display_logged_accounts(self):
         self.user_table.setRowCount(0)
-        current_hour = datetime.now().hour  # 获取当前小时
+        current_date = datetime.now().strftime("%Y-%m-%d")  # 获取当天日期
         row = 0
         for username, account_info in self.logged_accounts.items():
             self.user_table.insertRow(row)
@@ -264,10 +266,14 @@ class LoginTool(QWidget):
             status_text = "有效" if is_valid else "过期"
             self.user_table.setItem(row, 1, QTableWidgetItem(status_text))
             # 签到情况（这里先假设为固定值，可根据实际情况修改）
-            self.user_table.setItem(row, 2, QTableWidgetItem("已签到"))
+            last_sign_date = account_info.get("last_sign_date", "")
+            sign_status = "今日已签到" if last_sign_date == current_date else "未签到"
+            self.user_table.setItem(row, 2, QTableWidgetItem(sign_status))
             # 打工冷却（这里先假设为固定值，可根据实际情况修改）
-            self.user_table.setItem(row, 3, QTableWidgetItem("05:59:58"))
+            cool_down_text = self.calculate_work_cool_down(account_info)
+            self.user_table.setItem(row, 3, QTableWidgetItem(cool_down_text))
             # 签到按钮
+            current_hour = datetime.now().hour
             sign_button = QPushButton("签到")
             sign_button.clicked.connect(lambda _, u=username: self.start_sign_for_user(u))
             sign_button.setEnabled(is_valid and not (0 <= current_hour < 1))
@@ -286,6 +292,48 @@ class LoginTool(QWidget):
             delete_button.clicked.connect(lambda _, u=username: self.delete_account(u))
             self.user_table.setCellWidget(row, 7, delete_button)
             row += 1
+
+    def calculate_work_cool_down(self, account_info):
+        last_work_time_str = account_info.get("last_work_time", "")
+        if last_work_time_str:
+            try:
+                last_work_time = datetime.strptime(last_work_time_str, "%Y-%m-%d %H:%M:%S")
+                cool_down_end_time = last_work_time + timedelta(hours=6)
+                remaining_time = cool_down_end_time - datetime.now()
+                if remaining_time.total_seconds() > 0:
+                    total_seconds = int(remaining_time.total_seconds()) + (1 if remaining_time.microseconds > 0 else 0)
+                    hours = total_seconds // 3600
+                    minutes = (total_seconds % 3600) // 60
+                    seconds = total_seconds % 60
+                    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            except ValueError:
+                logger.error(f"解析 last_work_time {last_work_time_str} 时出错，格式可能不正确")
+        return "00:00:00"
+
+    def update_work_cool_down(self):
+        for row in range(self.user_table.rowCount()):
+            username_item = self.user_table.item(row, 0)
+            if username_item:
+                username = username_item.text()
+                account_info = self.logged_accounts.get(username, {})
+                # 计算新的冷却时间
+                new_cool_down_text = self.calculate_work_cool_down(account_info)
+                # 获取表格中打工冷却时间对应的单元格
+                cool_down_item = self.user_table.item(row, 3)
+                if cool_down_item:
+                    # 更新单元格文本
+                    cool_down_item.setText(new_cool_down_text)
+                else:
+                    self.user_table.setItem(row, 3, QTableWidgetItem(new_cool_down_text))
+
+                # 更新打工按钮状态
+                work_button = self.user_table.cellWidget(row, 5)
+                if work_button:
+                    is_valid = account_info.get("is_cookie_valid", False)
+                    work_button.setEnabled(is_valid)
+    
+                # 强制刷新表格
+        self.user_table.viewport().update()
 
     def delete_account(self, username):
         if username in self.logged_accounts:
@@ -348,31 +396,19 @@ class LoginTool(QWidget):
 
     def update_log_display(self):
         if os.path.exists(self.log_file_path):
-            is_sign_running = self.is_sign_process_running()
             max_retries = 3
             retries = 0
             while retries < max_retries:
                 try:
-                    if is_sign_running:
-                        # 签到进程运行时，只读模式读取
-                        with io.open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                            f.seek(0, os.SEEK_END)
-                            current_size = f.tell()
-                            if current_size > self.last_log_size:
-                                f.seek(self.last_log_size)
-                                new_log_content = ''.join([line.strip() + '\n' for line in f.readlines()])
-                                self.log_text_edit.insertPlainText(new_log_content)
-                                self.last_log_size = current_size
-                    else:
-                        # 签到进程结束后，可进行读写操作（这里主要是读取显示）
-                        with open(self.log_file_path, 'r', encoding='utf-8') as f:
-                            f.seek(0, os.SEEK_END)
-                            current_size = f.tell()
-                            if current_size > self.last_log_size:
-                                f.seek(self.last_log_size)
-                                new_log_content = ''.join([line.strip() + '\n' for line in f.readlines()])
-                                self.log_text_edit.insertPlainText(new_log_content)
-                                self.last_log_size = current_size
+                    # 统一使用只读模式读取日志文件
+                    with io.open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        f.seek(0, os.SEEK_END)
+                        current_size = f.tell()
+                        if current_size > self.last_log_size:
+                            f.seek(self.last_log_size)
+                            new_log_content = ''.join([line.strip() + '\n' for line in f.readlines()])
+                            self.log_text_edit.insertPlainText(new_log_content)
+                            self.last_log_size = current_size
                     self.log_text_edit.moveCursor(self.log_text_edit.textCursor().End)
                     break
                 except Exception as e:
@@ -380,14 +416,6 @@ class LoginTool(QWidget):
                     time.sleep(0.1)
                     if retries == max_retries:
                         QMessageBox.warning(self, "警告", f"读取日志文件时出错: {e}")
-
-    def is_sign_process_running(self):
-        if self.sign_process:
-            try:
-                return self.sign_process.is_running()
-            except psutil.NoSuchProcess:
-                self.sign_process = None
-        return False
 
     def clear_log(self):
         if os.path.exists(self.log_file_path):
