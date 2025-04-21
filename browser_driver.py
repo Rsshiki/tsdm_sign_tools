@@ -27,11 +27,11 @@ def extract_version_from_path(driver_path):
             return parts[i].lstrip('v')
     return None
 
-def setup_driver(headless=True): #True为无头模式，False为有头模式
+def setup_driver(headless=False): #True为无头模式，False为有头模式
     """设置浏览器驱动"""
     firefox_options = Options()
-    if headless:
-        firefox_options.add_argument('-headless')
+    # if headless:
+    #     firefox_options.add_argument('-headless')
     firefox_options.set_preference("general.log.level", "fatal")
     user_data_dir = None
     driver = None
@@ -83,6 +83,14 @@ def setup_driver(headless=True): #True为无头模式，False为有头模式
             except Exception as rm_error:
                 logger.error(f"删除用户数据目录时出错: {rm_error}")
     return driver, user_data_dir
+
+def is_driver_active(driver):
+    """检查浏览器驱动是否处于活动状态"""
+    try:
+        driver.current_url
+        return True
+    except:
+        return False
 
 def update_geckodriver():
     """更新 geckodriver 并更新配置文件"""
