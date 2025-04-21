@@ -121,7 +121,16 @@ class LoginTool(QWidget):
         self.work_cool_down_timer.timeout.connect(self.update_work_cool_down)
         self.work_cool_down_timer.start(1000)
 
+        # 时钟定时器
+        self.clock_timer = QTimer(self)
+        self.clock_timer.timeout.connect(self.update_clock)
+        self.clock_timer.start(1000)
+
+        # 新增属性，用于存储当前时间
+        self.current_time = datetime.now()
+
         self.initUI()
+
         # 初始化时加载配置并刷新面板
         self.load_and_refresh()
         # 设置定时器，每秒更新一次日志
@@ -182,6 +191,12 @@ class LoginTool(QWidget):
         clear_log_button = QPushButton("清空日志")
         clear_log_button.clicked.connect(self.clear_log)
         browser_info_layout.addWidget(clear_log_button)
+
+        # 时钟显示
+        self.clock_label = QLabel()
+        self.clock_label.setAlignment(Qt.AlignCenter)
+        self.clock_label.setStyleSheet("font-size: 18px;")
+        browser_info_layout.addWidget(self.clock_label)
 
         # 日志信息
         self.log_text_edit = QTextEdit()
@@ -255,7 +270,7 @@ class LoginTool(QWidget):
 
     def display_logged_accounts(self):
         self.user_table.setRowCount(0)
-        current_date = datetime.now().strftime("%Y-%m-%d")  # 获取当天日期
+        current_date = self.current_time.strftime("%Y-%m-%d") 
         row = 0
         for username, account_info in self.logged_accounts.items():
             self.user_table.insertRow(row)
@@ -273,7 +288,7 @@ class LoginTool(QWidget):
             cool_down_text = self.calculate_work_cool_down(account_info)
             self.user_table.setItem(row, 3, QTableWidgetItem(cool_down_text))
             # 签到按钮
-            current_hour = datetime.now().hour
+            current_hour = self.current_time.hour
             sign_button = QPushButton("签到")
             sign_button.clicked.connect(lambda _, u=username: self.start_sign_for_user(u))
             sign_button.setEnabled(is_valid and not (0 <= current_hour < 1))
@@ -293,13 +308,17 @@ class LoginTool(QWidget):
             self.user_table.setCellWidget(row, 7, delete_button)
             row += 1
 
+    def update_clock(self):
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.clock_label.setText(current_time)
+
     def calculate_work_cool_down(self, account_info):
         last_work_time_str = account_info.get("last_work_time", "")
         if last_work_time_str:
             try:
                 last_work_time = datetime.strptime(last_work_time_str, "%Y-%m-%d %H:%M:%S")
                 cool_down_end_time = last_work_time + timedelta(hours=6)
-                remaining_time = cool_down_end_time - datetime.now()
+                remaining_time = cool_down_end_time - self.current_time
                 if remaining_time.total_seconds() > 0:
                     total_seconds = int(remaining_time.total_seconds()) + (1 if remaining_time.microseconds > 0 else 0)
                     hours = total_seconds // 3600
