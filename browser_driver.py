@@ -10,6 +10,7 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
 from webdriver_manager.firefox import GeckoDriverManager
 from config_handler import load_config, update_browser_info
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 # 配置日志
 logger = setup_logger('tsdm_sign_tools.log')
@@ -65,9 +66,17 @@ def get_geckodriver_download_info():
     return download_url, version
 
 
-def setup_driver(headless=False):
+def setup_driver(headless=True):
     """设置浏览器驱动"""
     firefox_options = Options()
+    if headless:
+        firefox_options.add_argument('-headless')
+    # 设置页面加载策略为 eager
+    caps = DesiredCapabilities.FIREFOX
+    caps["pageLoadStrategy"] = "eager"
+    # 设置页面加载策略为 eager，迁移自 capabilities
+    firefox_options.set_preference("pageLoadStrategy", "eager")
+    # 设置日志级别
     firefox_options.set_preference("general.log.level", "fatal")
     user_data_dir = None
     driver = None

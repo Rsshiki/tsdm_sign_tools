@@ -105,6 +105,9 @@ class LoginTool(QWidget):
         self._init_timers()
         self._init_ui()
         self.load_and_refresh()
+        self.is_automation_running = False
+        self.task_queue = []  # 任务队列
+        self.is_task_running = False  # 任务锁
 
     # 初始化相关
     def _init_config(self):
@@ -215,10 +218,7 @@ class LoginTool(QWidget):
                 self.toggle_switch._offset = self.toggle_switch.width() - self.toggle_switch.height()
                 self.toggle_switch.update()
 
-        # 添加日志输出检测是否读取成功
-        logger.info(f"浏览器信息: {self.browser_info}")  # 浏览器信息
-        logger.info(f"账号信息: {self.logged_accounts}")  # 账号信息
-        logger.info(f"计划任务信息: {self.admin_scheduled_tasks}")  # 管理员计划任务信息
+        # 添加日志输出检测是否读取成功(可以作为开场）
 
         self._update_add_account_button_state()
 
@@ -243,10 +243,10 @@ class LoginTool(QWidget):
         else:
             if self.toggle_switch.checked:
                 logger.info("自动功能已开启")
-                # 这里添加开启自动功能的逻辑
+                self.is_automation_running = True
             else:
                 logger.info("自动功能已关闭")
-                # 这里添加关闭自动功能的逻辑
+                self.is_automation_running = False
 
         # 保存滑动开关状态
         self.config["toggle_switch_state"] = self.toggle_switch.checked
@@ -272,25 +272,38 @@ class LoginTool(QWidget):
             self.load_and_refresh()
             logger.info(f"账号 {username} 已删除")
 
-    def start_sign_for_user(self, username):
+    def start_sign_for_user(self, username, callback=None):
         try:
             logger.info(f"为用户 {username} 启动签到")
             account_info = self.logged_accounts[username]
             cookies = account_info["cookie"]
             perform_sign(username, cookies)
         finally:
-            pass
+            if callback:
+                callback()
         self.load_and_refresh()
 
-    def start_work_for_user(self, username):
+    def start_work_for_user(self, username, callback=None):
         try:
             logger.info(f"为用户 {username} 启动打工")
             account_info = self.logged_accounts[username]
             cookies = account_info["cookie"]
             perform_work(username, cookies)
         finally:
-            pass
+            if callback:
+                callback()
         self.load_and_refresh()
+
+
+    def task_complete(self):
+        self.is_task_running = False  # 任务完成，解锁
+        unique_tasks = []
+        seen = set()
+        for task in self.task_queue:
+            if task not in seen:
+                unique_tasks.append(task)
+                seen.add(task)
+        self.task_queue = unique_tasks
 
     def clear_log(self):
         if os.path.exists(self.log_file_path):
@@ -378,6 +391,53 @@ class LoginTool(QWidget):
                     work_button.setEnabled(is_valid)
 
         self.user_table.viewport().update()
+
+        # 自动化功能逻辑
+        if self.is_automation_running:
+            new_tasks = []
+            for username, account_info in self.logged_accounts.items():
+                is_valid = account_info["is_cookie_valid"]
+                current_date = self.current_time.strftime("%Y-%m-%d")
+                last_sign_date = account_info.get("last_sign_date", "")
+                sign_status = last_sign_date == current_date
+                current_hour = self.current_time.hour
+                cool_down_text = self.calculate_work_cool_down(account_info)
+
+                # 输出日志，检查判断条件
+                logger.info(f"账号: {username}, 签到状态: {sign_status}, 当前小时: {current_hour}, 冷却时间: {cool_down_text}")
+
+                # 自动签到逻辑
+                if is_valid and not sign_status and not (0 <= current_hour < 1):
+                    sign_task = ('sign', username)
+                    if sign_task not in self.task_queue:
+                        logger.info(f"自动为用户 {username} 准备添加签到任务")
+                        self.task_queue.append(sign_task)
+
+                # 自动打工逻辑
+                if is_valid and cool_down_text == "00:00:00":
+                    work_task = ('work', username)
+                    if work_task not in self.task_queue:
+                        logger.info(f"自动为用户 {username} 准备添加打工任务")
+                        self.task_queue.append(work_task)
+
+            # 记录添加新任务前的队列状态
+            logger.info(f"添加新任务前的任务队列: {self.task_queue}")
+            self.task_queue.extend(new_tasks)
+            # 记录添加新任务后的队列状态
+            logger.info(f"添加新任务后的任务队列: {self.task_queue}")
+
+        # 执行队列中的任务
+        if self.task_queue and not self.is_task_running:
+            task_type, username = self.task_queue.pop(0)
+            # 记录取出任务后的队列状态
+            logger.info(f"取出任务 {task_type} - {username} 后，任务队列: {self.task_queue}")
+            self.is_task_running = True
+            if task_type == 'sign':
+                logger.info(f"自动为用户 {username} 启动签到")
+                self.start_sign_for_user(username, callback=self.task_complete)
+            elif task_type == 'work':
+                logger.info(f"自动为用户 {username} 启动打工")
+                self.start_work_for_user(username, callback=self.task_complete)
 
     def update_log_display(self): # 更新日志显示
         if os.path.exists(self.log_file_path):
