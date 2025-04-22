@@ -9,7 +9,7 @@ from browser_driver import update_geckodriver
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QFrame, QTextEdit, QMessageBox, QTableWidget,
                              QTableWidgetItem)
-from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QPointF, pyqtSignal, QRectF, pyqtProperty  # 导入 pyqtProperty
+from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QPointF, pyqtSignal, QRectF, QThread, pyqtProperty  # 导入 pyqtProperty
 from PyQt5.QtGui import QPainter, QBrush, QColor, QFont
 from sign_handler import perform_sign
 from work_handler import perform_work
@@ -19,6 +19,94 @@ from login_handler import show_login_browser
 logger = setup_logger('tsdm_sign_tools.log')
 
 LOGIN_URL = 'https://www.tsdm39.com/member.php?mod=logging&action=login'
+
+class UpdateDriverThread(QThread):
+    result_signal = pyqtSignal(int)  # 定义信号，用于发送更新结果
+
+    def run(self):
+        try:
+            update_result = update_geckodriver()
+            if update_result is None:  # 假设无需更新时返回 None
+                self.result_signal.emit(0)
+            elif update_result is True:
+                self.result_signal.emit(1)
+            else:
+                self.result_signal.emit(-1)
+        except Exception as e:
+            # 可以记录异常日志
+            self.result_signal.emit(-1)
+
+class LogReaderThread(QThread):
+    new_log_signal = pyqtSignal(str)  # 定义信号，用于发送新的日志内容
+
+    def __init__(self, log_file_path, last_log_size):
+        super().__init__()
+        self.log_file_path = log_file_path
+        self.last_log_size = last_log_size
+
+    def run(self):
+        if os.path.exists(self.log_file_path):
+            try:
+                with io.open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    f.seek(0, os.SEEK_END)
+                    current_size = f.tell()
+                    if current_size > self.last_log_size:
+                        f.seek(self.last_log_size)
+                        new_log_content = ''.join([line.strip() + '\n' for line in f.readlines()])
+                        self.new_log_signal.emit(new_log_content)  # 发送新日志内容
+                        self.last_log_size = current_size
+            except Exception as e:
+                # 这里可以记录异常日志
+                pass
+
+class SignThread(QThread):
+    # 定义信号，任务完成时发出
+    finished = pyqtSignal(str)
+
+    def __init__(self, username, cookies):
+        super().__init__()
+        self.username = username
+        self.cookies = cookies
+
+    def run(self):
+        try:
+            perform_sign(self.username, self.cookies)
+            self.finished.emit(self.username)
+        except Exception as e:
+            # 可以在这里添加错误处理的日志
+            pass
+
+class AddAccountThread(QThread):
+    finished = pyqtSignal()
+
+    def __init__(self, parent):
+        super().__init__()
+        self.parent = parent
+
+    def run(self):
+        try:
+            show_login_browser(self.parent)
+            self.finished.emit()
+        except Exception as e:
+            # 可以在这里添加错误处理的日志
+            pass
+
+class WorkThread(QThread):
+    finished = pyqtSignal(str)
+
+    def __init__(self, username, cookies):
+        super().__init__()
+        self.username = username
+        self.cookies = cookies
+
+    def run(self):
+        try:
+            perform_work(self.username, self.cookies)
+            self.finished.emit(self.username)
+        except Exception as e:
+            # 可以在这里添加错误处理的日志
+            pass
+
 
 class ToggleSwitch(QWidget):
     def __init__(self, parent=None, width=150, height=30, checked_color="#66BB6A",
@@ -108,6 +196,7 @@ class LoginTool(QWidget):
         self.is_automation_running = False
         self.task_queue = []  # 任务队列
         self.is_task_running = False  # 任务锁
+        self.log_reader_thread = None  # 日志读取线程
 
     # 初始化相关
     def _init_config(self):
@@ -130,6 +219,18 @@ class LoginTool(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_log_display)
         self.timer.start(1000)
+
+    def start_log_reader(self):
+        if self.log_reader_thread and self.log_reader_thread.isRunning():
+            return
+        self.log_reader_thread = LogReaderThread(self.log_file_path, self.last_log_size)
+        self.log_reader_thread.new_log_signal.connect(self.update_log_display_ui)
+        self.log_reader_thread.start()
+
+    def update_log_display_ui(self, new_log_content):
+        self.log_text_edit.insertPlainText(new_log_content)
+        self.last_log_size += len(new_log_content.encode('utf-8'))
+        self.log_text_edit.moveCursor(self.log_text_edit.textCursor().End)
 
     def _init_ui(self):
         self.setWindowTitle("天使动漫论坛登录工具")
@@ -253,17 +354,24 @@ class LoginTool(QWidget):
         save_config(self.config)
 
     def update_driver(self):
-        update_result = update_geckodriver()
-        if update_result is True:
+        self.update_driver_thread = UpdateDriverThread()
+        self.update_driver_thread.result_signal.connect(self.handle_update_result)
+        self.update_driver_thread.start()
+
+    def handle_update_result(self, result_code):
+        if result_code == 1:
             # 操作完成后加载配置并刷新面板
             self.load_and_refresh()
             QMessageBox.information(self, "更新成功", "浏览器驱动已成功更新。")
-        elif update_result is False:
+        elif result_code == 0:
+            QMessageBox.information(self, "无需更新", "当前 geckodriver 已经是最新版本，无需更新。")
+        elif result_code == -1:
             QMessageBox.critical(self, "更新失败", "浏览器驱动更新失败，请查看日志。")
 
     def show_login_browser(self):
-        show_login_browser(self)
-        self.load_and_refresh()
+        self.add_account_thread = AddAccountThread(self)
+        self.add_account_thread.finished.connect(self.load_and_refresh)
+        self.add_account_thread.start()
 
     def delete_account(self, username):
         if username in self.logged_accounts:
@@ -273,26 +381,26 @@ class LoginTool(QWidget):
             logger.info(f"账号 {username} 已删除")
 
     def start_sign_for_user(self, username, callback=None):
-        try:
-            logger.info(f"为用户 {username} 启动签到")
-            account_info = self.logged_accounts[username]
-            cookies = account_info["cookie"]
-            perform_sign(username, cookies)
-        finally:
-            if callback:
-                callback()
-        self.load_and_refresh()
+        logger.info(f"为用户 {username} 启动签到")
+        account_info = self.logged_accounts[username]
+        cookies = account_info["cookie"]
+        self.sign_thread = SignThread(username, cookies)
+        if callback:
+            self.sign_thread.finished.connect(lambda: (callback(), self.load_and_refresh()))
+        else:
+            self.sign_thread.finished.connect(self.load_and_refresh)
+        self.sign_thread.start()
 
     def start_work_for_user(self, username, callback=None):
-        try:
-            logger.info(f"为用户 {username} 启动打工")
-            account_info = self.logged_accounts[username]
-            cookies = account_info["cookie"]
-            perform_work(username, cookies)
-        finally:
-            if callback:
-                callback()
-        self.load_and_refresh()
+        logger.info(f"为用户 {username} 启动打工")
+        account_info = self.logged_accounts[username]
+        cookies = account_info["cookie"]
+        self.work_thread = WorkThread(username, cookies)
+        if callback:
+            self.work_thread.finished.connect(lambda: (callback(), self.load_and_refresh()))
+        else:
+            self.work_thread.finished.connect(self.load_and_refresh)
+        self.work_thread.start()
 
 
     def task_complete(self):
