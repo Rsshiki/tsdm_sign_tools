@@ -197,6 +197,7 @@ class LoginTool(QWidget):
         self.task_queue = []  # 任务队列
         self.is_task_running = False  # 任务锁
         self.log_reader_thread = None  # 日志读取线程
+        self.current_task_index = -1  # 新增：当前任务的索引
         self.load_and_refresh()
     # 初始化相关
     def _init_config(self):
@@ -313,7 +314,6 @@ class LoginTool(QWidget):
 
         # 检查开关状态并触发自动功能
         if self.toggle_switch.checked:
-            logger.info("软件启动时自动功能已开启")
             self.is_automation_running = True
             # 触发一次任务检查，确保自动任务开始执行
             self.update_all_time_dependent_info()
@@ -557,10 +557,12 @@ class LoginTool(QWidget):
         self.execute_task_if_available()
         
     def execute_task_if_available(self):
-        while self.task_queue and not self.is_task_running:
-            try:
-                task_type, username = self.task_queue.pop(0)  # 从队列头部取出任务
-                logger.info(f"取出任务 {task_type} - {username} 后，任务队列: {self.task_queue}")
+        if self.task_queue and not self.is_task_running:
+            # 不立即从队列中移除任务，只记录当前任务索引
+            self.current_task_index += 1
+            if self.current_task_index < len(self.task_queue):
+                task_type, username = self.task_queue[self.current_task_index]
+                logger.info(f"即将执行任务 {task_type} - {username}，当前任务队列: {self.task_queue}")
                 self.is_task_running = True
                 if task_type == 'sign':
                     logger.info(f"自动为用户 {username} 启动签到")
@@ -568,12 +570,19 @@ class LoginTool(QWidget):
                 elif task_type == 'work':
                     logger.info(f"自动为用户 {username} 启动打工")
                     self.start_work_for_user(username, callback=self.task_complete)
-            except Exception as e:
-                logger.error(f"执行任务 {task_type} - {username} 时出错: {e}")
-                self.is_task_running = False  # 出错时重置标志
+            else:
+                # 若索引超出队列长度，重置索引
+                self.current_task_index = -1
 
     def task_complete(self):
         self.is_task_running = False  # 任务完成，解锁
+        if self.current_task_index >= 0 and self.current_task_index < len(self.task_queue):
+            # 任务完成后，从队列中移除当前任务
+            completed_task = self.task_queue.pop(self.current_task_index)
+            logger.info(f"任务 {completed_task} 已完成，从队列中移除，当前任务队列: {self.task_queue}")
+            # 由于移除了任务，需要调整当前索引
+            self.current_task_index -= 1
+
         unique_tasks = []
         seen = set()
         for task in self.task_queue:
@@ -586,6 +595,10 @@ class LoginTool(QWidget):
         if not self.task_queue:
             logger.info("任务队列已清空，关闭浏览器进程")
             close_browser_driver()
+            self.current_task_index = -1  # 队列清空，重置索引
+
+        # 任务完成后，尝试执行下一个任务
+        self.execute_task_if_available()
 
     def update_log_display(self): # 更新日志显示
         if os.path.exists(self.log_file_path):
@@ -659,7 +672,7 @@ class LoginTool(QWidget):
         
         # 接受关闭事件，让主窗口正常关闭
         event.accept()
-        
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     login_tool = LoginTool()
