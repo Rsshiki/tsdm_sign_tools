@@ -362,6 +362,8 @@ class LoginTool(QWidget):
         self.clock_label.setText(current_time)
 
     def update_work_cool_down(self):
+        # 每次执行时更新当前时间
+        self.current_time = datetime.now()
         for row in range(self.user_table.rowCount()):
             username_item = self.user_table.item(row, 0)
             if username_item:
@@ -383,7 +385,7 @@ class LoginTool(QWidget):
                     is_valid = account_info.get("is_cookie_valid", False)
                     work_button.setEnabled(is_valid)
     
-                # 强制刷新表格
+        # 强制刷新表格
         self.user_table.viewport().update()
 
     def update_log_display(self): # 更新日志显示
