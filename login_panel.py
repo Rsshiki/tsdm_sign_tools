@@ -512,7 +512,7 @@ class LoginTool(QWidget):
                 cool_down_text = self.calculate_work_cool_down(account_info)
 
                 # 输出日志，检查判断条件
-                logger.info(f"账号: {username}, 签到状态: {sign_status}, 当前小时: {current_hour}, 冷却时间: {cool_down_text}")
+                # logger.info(f"账号: {username}, 签到状态: {sign_status}, 当前小时: {current_hour}, 冷却时间: {cool_down_text}")
 
                 # 自动签到逻辑
                 if is_valid and not sign_status and not (0 <= current_hour < 1):
@@ -528,11 +528,7 @@ class LoginTool(QWidget):
                         logger.info(f"自动为用户 {username} 准备添加打工任务")
                         self.task_queue.append(work_task)
 
-            # 记录添加新任务前的队列状态
-            logger.info(f"添加新任务前的任务队列: {self.task_queue}")
             self.task_queue.extend(new_tasks)
-            # 记录添加新任务后的队列状态
-            logger.info(f"添加新任务后的任务队列: {self.task_queue}")
 
         # 执行队列中的任务
         if self.task_queue and not self.is_task_running:
