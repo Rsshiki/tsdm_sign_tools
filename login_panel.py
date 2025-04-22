@@ -5,9 +5,7 @@ import time
 from datetime import datetime, timedelta
 from log_config import setup_logger
 from config_handler import load_config, save_config
-
 from browser_driver import update_geckodriver
-
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QFrame, QTextEdit, QMessageBox, QTableWidget,
                              QTableWidgetItem)
@@ -120,15 +118,10 @@ class LoginTool(QWidget):
         self.current_time = datetime.now()
 
     def _init_timers(self):
-        # 初始化打工冷却时间定时器
-        self.work_cool_down_timer = QTimer(self)
-        self.work_cool_down_timer.timeout.connect(self.update_work_cool_down)
-        self.work_cool_down_timer.start(1000)
-
-        # 时钟定时器
-        self.clock_timer = QTimer(self)
-        self.clock_timer.timeout.connect(self.update_clock)
-        self.clock_timer.start(1000)
+        # 合并时间获取逻辑到一个定时器中
+        self.time_update_timer = QTimer(self)
+        self.time_update_timer.timeout.connect(self.update_all_time_dependent_info)
+        self.time_update_timer.start(1000)
 
         # 日志定时器
         self.timer = QTimer(self)
@@ -357,35 +350,33 @@ class LoginTool(QWidget):
             delete_button.clicked.connect(lambda _, u=username: self.delete_account(u))
             self.user_table.setCellWidget(row, 7, delete_button)
 
-    def update_clock(self):
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.clock_label.setText(current_time)
+    def update_all_time_dependent_info(self):
+        # 每秒获取一次当前时间
+        current_time = datetime.now()
+        self.current_time = current_time
+        current_time_str = current_time.strftime("%Y-%m-%d %H:%M:%S")
 
-    def update_work_cool_down(self):
-        # 每次执行时更新当前时间
-        self.current_time = datetime.now()
+        # 更新时钟显示
+        self.clock_label.setText(current_time_str)
+
+        # 更新打工冷却时间
         for row in range(self.user_table.rowCount()):
             username_item = self.user_table.item(row, 0)
             if username_item:
                 username = username_item.text()
                 account_info = self.logged_accounts.get(username, {})
-                # 计算新的冷却时间
                 new_cool_down_text = self.calculate_work_cool_down(account_info)
-                # 获取表格中打工冷却时间对应的单元格
                 cool_down_item = self.user_table.item(row, 3)
                 if cool_down_item:
-                    # 更新单元格文本
                     cool_down_item.setText(new_cool_down_text)
                 else:
                     self.user_table.setItem(row, 3, QTableWidgetItem(new_cool_down_text))
 
-                # 更新打工按钮状态
                 work_button = self.user_table.cellWidget(row, 5)
                 if work_button:
                     is_valid = account_info.get("is_cookie_valid", False)
                     work_button.setEnabled(is_valid)
-    
-        # 强制刷新表格
+
         self.user_table.viewport().update()
 
     def update_log_display(self): # 更新日志显示
