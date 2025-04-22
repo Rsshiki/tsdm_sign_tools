@@ -31,41 +31,6 @@ def extract_version_from_path(driver_path):
             return parts[i].lstrip('v')
     return None
 
-
-def extract_version_from_url(url):
-    """从下载地址中提取版本号"""
-    pattern = r'v(\d+\.\d+\.\d+)'
-    match = re.search(pattern, url)
-    if match:
-        return match.group(1)
-    return None
-
-
-class CustomGeckoDriverManager(GeckoDriverManager):
-    def __init__(self):
-        super().__init__()
-        self.download_url = None
-
-    def _get_driver_download_url(self, driver, os_type):
-        self.download_url = super()._get_driver_download_url(driver, os_type)
-        return self.download_url
-
-
-def get_geckodriver_download_info():
-    """获取 geckodriver 下载地址和版本号"""
-    custom_manager = CustomGeckoDriverManager()
-    # 触发获取下载地址逻辑
-    try:
-        custom_manager.driver = custom_manager._get_driver_to_download()
-        custom_manager._get_driver_download_url(custom_manager.driver, custom_manager.os_type)
-    except Exception as e:
-        logger.error(f"获取下载地址时出错: {e}")
-        return None, None
-    download_url = custom_manager.download_url
-    version = extract_version_from_url(download_url)
-    return download_url, version
-
-
 def setup_driver(headless=True):
     """设置浏览器驱动"""
     firefox_options = Options()
@@ -90,13 +55,6 @@ def setup_driver(headless=True):
             # 如果配置文件中有浏览器驱动路径且文件存在，直接使用该路径
             pass
         else:
-            download_url, version = get_geckodriver_download_info()
-            logger.info(f"geckodriver 下载地址: {download_url}")
-            if version:
-                logger.info(f"从下载地址获取到的 geckodriver 版本号: {version}")
-            else:
-                logger.warning("未能从下载地址中提取到版本号")
-
             # 让 webdriver_manager 正常下载
             default_driver_path = GeckoDriverManager().install()
             # 获取驱动所在的文件夹
@@ -160,12 +118,6 @@ def update_geckodriver():
 
         if latest_version > current_version:
             logger.info(f"检测到新版本 {latest_version}，当前版本 {current_version}，开始更新...")
-            download_url, version = get_geckodriver_download_info()
-            logger.info(f"geckodriver 下载地址: {download_url}")
-            if version:
-                logger.info(f"从下载地址获取到的 geckodriver 版本号: {version}")
-            else:
-                logger.warning("未能从下载地址中提取到版本号")
 
             # 让 webdriver_manager 正常下载
             default_driver_path = GeckoDriverManager().install()
