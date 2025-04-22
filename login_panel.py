@@ -2,19 +2,17 @@ import io
 import os
 import sys
 import time
-import psutil  # 用于进程监控
 from datetime import datetime, timedelta
 from log_config import setup_logger
-from selenium.webdriver.common.by import By
 from config_handler import load_config, save_config
-from selenium.webdriver.support.ui import WebDriverWait
-from browser_driver import setup_driver, update_geckodriver
-from selenium.webdriver.support import expected_conditions as EC
+
+from browser_driver import update_geckodriver
+
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QFrame, QTextEdit, QMessageBox, QTableWidget,
                              QTableWidgetItem)
 from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QPointF, pyqtSignal, QRectF, pyqtProperty  # 导入 pyqtProperty
-from PyQt5.QtGui import QPainter, QBrush, QColor, QPen, QFont
+from PyQt5.QtGui import QPainter, QBrush, QColor, QFont
 from sign_handler import perform_sign
 from work_handler import perform_work
 from login_handler import show_login_browser
@@ -38,7 +36,7 @@ class ToggleSwitch(QWidget):
         self.animation.setEasingCurve(QEasingCurve.InOutQuad)
         self.animation.setDuration(200)
 
-    # 使用 pyqtProperty 定义 offset 属性
+    # 属性定义
     @pyqtProperty(float)
     def offset(self):
         return self._offset
@@ -48,6 +46,22 @@ class ToggleSwitch(QWidget):
         self._offset = offset
         self.update()
 
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.checked = not self.checked
+            self.animation.stop()
+            if self.checked:
+                self.animation.setStartValue(0)
+                self.animation.setEndValue(self.width() - self.height())
+            else:
+                self.animation.setStartValue(self.width() - self.height())
+                self.animation.setEndValue(0)
+            self.animation.start()
+            self.clicked.emit()
+
+    clicked = pyqtSignal()  # 使用导入的 pyqtSignal
+
+    # UI 绘制
     def sizeHint(self):
         return self.size()
 
@@ -77,45 +91,35 @@ class ToggleSwitch(QWidget):
         painter.setFont(font)
 
         # 根据开关状态设置文字颜色
-        if self.checked:
-            text_color = QColor(255, 255, 255)  # 白色文字
-        else:
-            text_color = QColor(0, 0, 0)  # 黑色文字
+        text_color = QColor(255, 255, 255) if self.checked else QColor(0, 0, 0)
         painter.setPen(text_color)
 
         # 根据开关状态绘制文字
-        if self.checked:
-            text = "运行中"
-            text_x = self.width() / 2 - painter.fontMetrics().width(text) / 2
-        else:
-            text = "自动运行"
-            text_x = self.width() / 2 - painter.fontMetrics().width(text) / 2
-
+        text = "运行中" if self.checked else "自动运行"
+        text_x = self.width() / 2 - painter.fontMetrics().width(text) / 2
         text_y = self.height() / 2 + painter.fontMetrics().ascent() / 2
         painter.drawText(int(text_x), int(text_y), text)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.checked = not self.checked
-            self.animation.stop()
-            if self.checked:
-                self.animation.setStartValue(0)
-                self.animation.setEndValue(self.width() - self.height())
-            else:
-                self.animation.setStartValue(self.width() - self.height())
-                self.animation.setEndValue(0)
-            self.animation.start()
-            self.clicked.emit()
-
-    clicked = pyqtSignal()  # 使用导入的 pyqtSignal
 
 class LoginTool(QWidget):
     def __init__(self):
         super().__init__()
+        self._init_config()
+        self._init_timers()
+        self._init_ui()
+        self.load_and_refresh()
+
+    # 初始化相关
+    def _init_config(self):
         self.resize(1200, 800)  # 初始窗口大小
         self.log_file_path = 'tsdm_sign_tools.log'
         self.last_log_size = 0  # 新增属性，记录上一次读取的文件大小
-        self.logged_accounts = load_config().get('account_categories', {})
+        self.config = load_config()
+        self.logged_accounts = self.config.get('account_categories', {})
+        self.browser_info = self.config.get("browser_info", {})
+        self.admin_scheduled_tasks = self.config.get("scheduled_tasks", [])
+        self.current_time = datetime.now()
+
+    def _init_timers(self):
         # 初始化打工冷却时间定时器
         self.work_cool_down_timer = QTimer(self)
         self.work_cool_down_timer.timeout.connect(self.update_work_cool_down)
@@ -126,17 +130,72 @@ class LoginTool(QWidget):
         self.clock_timer.timeout.connect(self.update_clock)
         self.clock_timer.start(1000)
 
-        # 新增属性，用于存储当前时间
-        self.current_time = datetime.now()
-
-        self.initUI()
-
-        # 初始化时加载配置并刷新面板
-        self.load_and_refresh()
-        # 设置定时器，每秒更新一次日志
+        # 日志定时器
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_log_display)
         self.timer.start(1000)
+
+    def _init_ui(self):
+        self.setWindowTitle("天使动漫论坛登录工具")
+        main_layout = QVBoxLayout()
+
+        self.user_table = self._create_user_table()
+        main_layout.addWidget(self.user_table)
+        main_layout.addWidget(self._create_admin_tasks_frame())
+        main_layout.addWidget(self._create_browser_info_frame())
+        self.log_text_edit = QTextEdit()
+        self.log_text_edit.setReadOnly(True)
+        main_layout.addWidget(self.log_text_edit)
+
+        self.setLayout(main_layout)
+
+    # UI 创建工具方法
+    def _create_user_table(self):
+        table = QTableWidget()
+        table.setColumnCount(8)
+        table.setHorizontalHeaderLabels(["用户", "cookie状态", "签到情况", "打工冷却", "功能", "功能", "功能", "删除"])
+        table.horizontalHeader().setStretchLastSection(True)
+        return table
+
+    def _create_admin_tasks_frame(self):
+        frame = QFrame()
+        layout = QVBoxLayout(frame)
+        title_label = QLabel("管理员身份计划任务:")
+        title_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(title_label)
+        self.admin_tasks_list = QLabel()
+        layout.addWidget(self.admin_tasks_list)
+        return frame
+
+    def _create_browser_info_frame(self):
+        frame = QFrame()
+        layout = QHBoxLayout(frame)
+        self.browser_version_label = QLabel()
+        layout.addWidget(self.browser_version_label)
+
+        update_driver_button = QPushButton("更新驱动")
+        update_driver_button.clicked.connect(self.update_driver)
+        layout.addWidget(update_driver_button)
+        
+        self.toggle_switch = ToggleSwitch()
+        self.toggle_switch.clicked.connect(self.on_toggle_switch_clicked)
+        layout.addWidget(self.toggle_switch)
+
+        self.add_account_button = QPushButton("添加账号")
+        self.add_account_button.clicked.connect(self.show_login_browser)
+        self._update_add_account_button_state()
+        layout.addWidget(self.add_account_button)
+
+        clear_log_button = QPushButton("清空日志")
+        clear_log_button.clicked.connect(self.clear_log)
+        layout.addWidget(clear_log_button)
+
+        self.clock_label = QLabel()
+        self.clock_label.setAlignment(Qt.AlignCenter)
+        self.clock_label.setStyleSheet("font-size: 18px;")
+        layout.addWidget(self.clock_label)
+
+        return frame
 
     def load_and_refresh(self):
         """加载配置文件并刷新面板显示"""
@@ -144,73 +203,6 @@ class LoginTool(QWidget):
         self.display_logged_accounts()
         self.display_admin_scheduled_tasks()
         self.update_browser_version_display()
-
-    def initUI(self):
-        self.setWindowTitle("天使动漫论坛登录工具")
-
-        # 软件标题
-        title_label = QLabel("天使动漫论坛签到工具")
-        title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
-
-        # 用户信息表格
-        self.user_table = QTableWidget()
-        self.user_table.setColumnCount(8)  # 增加一列
-        self.user_table.setHorizontalHeaderLabels(["用户", "cookie状态", "签到情况", "打工冷却", "功能", "功能", "功能", "删除"])
-        self.user_table.horizontalHeader().setStretchLastSection(True)
-
-        # 管理员身份计划任务部分
-        admin_tasks_frame = QFrame()
-        admin_tasks_layout = QVBoxLayout(admin_tasks_frame)
-        admin_title_label = QLabel("管理员身份计划任务:")
-        admin_title_label.setStyleSheet("font-weight: bold;")
-        admin_tasks_layout.addWidget(admin_title_label)
-        self.admin_tasks_list = QLabel()
-        admin_tasks_layout.addWidget(self.admin_tasks_list)
-
-        # 浏览器信息及按钮部分
-        browser_info_frame = QFrame()
-        browser_info_layout = QHBoxLayout(browser_info_frame)
-        self.browser_version_label = QLabel()
-        browser_info_layout.addWidget(self.browser_version_label)
-        update_driver_button = QPushButton("更新驱动")
-        update_driver_button.clicked.connect(self.update_driver)
-        browser_info_layout.addWidget(update_driver_button)
-
-        # 滑动式开关
-        self.toggle_switch = ToggleSwitch()
-        self.toggle_switch.clicked.connect(self.on_toggle_switch_clicked)
-        browser_info_layout.addWidget(self.toggle_switch)
-
-        # 初始化添加账号按钮为禁用状态
-        self.add_account_button = QPushButton("添加账号")
-        self.add_account_button.clicked.connect(self.show_login_browser)
-        self.add_account_button.setEnabled(False)
-        browser_info_layout.addWidget(self.add_account_button)
-
-        clear_log_button = QPushButton("清空日志")
-        clear_log_button.clicked.connect(self.clear_log)
-        browser_info_layout.addWidget(clear_log_button)
-
-        # 时钟显示
-        self.clock_label = QLabel()
-        self.clock_label.setAlignment(Qt.AlignCenter)
-        self.clock_label.setStyleSheet("font-size: 18px;")
-        browser_info_layout.addWidget(self.clock_label)
-
-        # 日志信息
-        self.log_text_edit = QTextEdit()
-        self.log_text_edit.setReadOnly(True)
-
-        # 主布局
-        main_layout = QVBoxLayout()
-        main_layout.addWidget(title_label)
-        main_layout.addWidget(self.user_table)
-        main_layout.addWidget(admin_tasks_frame)
-        main_layout.addWidget(browser_info_frame)
-        main_layout.addWidget(self.log_text_edit)
-
-        self.setLayout(main_layout)
 
     def load_configuration(self):
         self.config = load_config()
@@ -235,6 +227,9 @@ class LoginTool(QWidget):
         logger.info(f"账号信息: {self.logged_accounts}")  # 账号信息
         logger.info(f"计划任务信息: {self.admin_scheduled_tasks}")  # 管理员计划任务信息
 
+        self._update_add_account_button_state()
+
+    def _update_add_account_button_state(self):
         # 根据浏览器驱动信息启用或禁用添加账号按钮
         if self.browser_info.get('path') and self.browser_info.get('version'):
             self.add_account_button.setEnabled(True)
@@ -264,6 +259,55 @@ class LoginTool(QWidget):
         self.config["toggle_switch_state"] = self.toggle_switch.checked
         save_config(self.config)
 
+    def update_driver(self):
+        update_result = update_geckodriver()
+        if update_result is True:
+            # 操作完成后加载配置并刷新面板
+            self.load_and_refresh()
+            QMessageBox.information(self, "更新成功", "浏览器驱动已成功更新。")
+        elif update_result is False:
+            QMessageBox.critical(self, "更新失败", "浏览器驱动更新失败，请查看日志。")
+
+    def show_login_browser(self):
+        show_login_browser(self)
+        self.load_and_refresh()
+
+    def delete_account(self, username):
+        if username in self.logged_accounts:
+            del self.logged_accounts[username]
+            self.save_config_changes()
+            self.load_and_refresh()
+            logger.info(f"账号 {username} 已删除")
+
+    def start_sign_for_user(self, username):
+        try:
+            logger.info(f"为用户 {username} 启动签到")
+            account_info = self.logged_accounts[username]
+            cookies = account_info["cookie"]
+            perform_sign(username, cookies)
+        finally:
+            pass
+        self.load_and_refresh()
+
+    def start_work_for_user(self, username):
+        try:
+            logger.info(f"为用户 {username} 启动打工")
+            account_info = self.logged_accounts[username]
+            cookies = account_info["cookie"]
+            perform_work(username, cookies)
+        finally:
+            pass
+        self.load_and_refresh()
+
+    def clear_log(self):
+        if os.path.exists(self.log_file_path):
+            with open(self.log_file_path, 'w') as f:
+                f.truncate(0)
+            self.log_text_edit.clear()
+            # 重置 last_log_size 为 0
+            self.last_log_size = 0
+
+    # 数据更新
     def update_browser_version_display(self):
         version = self.browser_info.get('version', '未知，请先更新驱动')
         self.browser_version_label.setText(f"驱动版本: {version}")
@@ -271,63 +315,51 @@ class LoginTool(QWidget):
     def display_logged_accounts(self):
         self.user_table.setRowCount(0)
         current_date = self.current_time.strftime("%Y-%m-%d") 
-        row = 0
-        for username, account_info in self.logged_accounts.items():
+        for row, (username, account_info) in enumerate(self.logged_accounts.items()):
             self.user_table.insertRow(row)
             # 用户
             self.user_table.setItem(row, 0, QTableWidgetItem(username))
+
             # cookie 状态
             is_valid = account_info["is_cookie_valid"]
             status_text = "有效" if is_valid else "过期"
             self.user_table.setItem(row, 1, QTableWidgetItem(status_text))
-            # 签到情况（这里先假设为固定值，可根据实际情况修改）
+
+            # 签到情况
             last_sign_date = account_info.get("last_sign_date", "")
             sign_status = "今日已签到" if last_sign_date == current_date else "未签到"
             self.user_table.setItem(row, 2, QTableWidgetItem(sign_status))
-            # 打工冷却（这里先假设为固定值，可根据实际情况修改）
+
+            # 打工冷却
             cool_down_text = self.calculate_work_cool_down(account_info)
             self.user_table.setItem(row, 3, QTableWidgetItem(cool_down_text))
+
             # 签到按钮
             current_hour = self.current_time.hour
             sign_button = QPushButton("签到")
             sign_button.clicked.connect(lambda _, u=username: self.start_sign_for_user(u))
             sign_button.setEnabled(is_valid and not (0 <= current_hour < 1))
             self.user_table.setCellWidget(row, 4, sign_button)
+
             # 打工按钮
             work_button = QPushButton("打工")
             work_button.clicked.connect(lambda _, u=username: self.start_work_for_user(u))
             work_button.setEnabled(is_valid)
             self.user_table.setCellWidget(row, 5, work_button)
+
             # 重登按钮
             re_login_button = QPushButton("重登")
             re_login_button.clicked.connect(lambda _, u=username: self.re_login(u))
             self.user_table.setCellWidget(row, 6, re_login_button)
+
             # 删除按钮
             delete_button = QPushButton("删除")
             delete_button.clicked.connect(lambda _, u=username: self.delete_account(u))
             self.user_table.setCellWidget(row, 7, delete_button)
-            row += 1
 
     def update_clock(self):
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.clock_label.setText(current_time)
-
-    def calculate_work_cool_down(self, account_info):
-        last_work_time_str = account_info.get("last_work_time", "")
-        if last_work_time_str:
-            try:
-                last_work_time = datetime.strptime(last_work_time_str, "%Y-%m-%d %H:%M:%S")
-                cool_down_end_time = last_work_time + timedelta(hours=6)
-                remaining_time = cool_down_end_time - self.current_time
-                if remaining_time.total_seconds() > 0:
-                    total_seconds = int(remaining_time.total_seconds()) + (1 if remaining_time.microseconds > 0 else 0)
-                    hours = total_seconds // 3600
-                    minutes = (total_seconds % 3600) // 60
-                    seconds = total_seconds % 60
-                    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            except ValueError:
-                logger.error(f"解析 last_work_time {last_work_time_str} 时出错，格式可能不正确")
-        return "00:00:00"
 
     def update_work_cool_down(self):
         for row in range(self.user_table.rowCount()):
@@ -354,66 +386,7 @@ class LoginTool(QWidget):
                 # 强制刷新表格
         self.user_table.viewport().update()
 
-    def delete_account(self, username):
-        if username in self.logged_accounts:
-            del self.logged_accounts[username]
-            self.save_config_changes()
-            self.load_and_refresh()
-            logger.info(f"账号 {username} 已删除")
-
-    def display_admin_scheduled_tasks(self):
-        tasks_text = '\n'.join(self.admin_scheduled_tasks)
-        self.admin_tasks_list.setText(tasks_text)
-
-    def show_login_browser(self):
-        show_login_browser(self)
-        self.load_and_refresh()
-
-    def add_account(self, username, cookies):
-        self.logged_accounts[username] = {
-            "cookies": cookies,
-            "is_cookie_valid": True
-        }
-
-    def re_login(self, username):
-        self.show_login_browser()
-
-    def update_driver(self):
-        update_result = update_geckodriver()
-        if update_result is True:
-            # 操作完成后加载配置并刷新面板
-            self.load_and_refresh()
-            QMessageBox.information(self, "更新成功", "浏览器驱动已成功更新。")
-        elif update_result is False:
-            QMessageBox.critical(self, "更新失败", "浏览器驱动更新失败，请查看日志。")
-
-    def save_config_changes(self):
-        self.config["account_categories"] = self.logged_accounts
-        save_config(self.config)
-
-    def start_sign_for_user(self, username):
-        try:
-            logger.info(f"为用户 {username} 启动签到")
-            account_info = self.logged_accounts[username]
-            cookies = account_info["cookie"]
-            perform_sign(username, cookies)
-        finally:
-            pass
-
-        self.load_and_refresh()
-
-    def start_work_for_user(self, username):
-        try:
-            logger.info(f"为用户 {username} 启动打工")
-            account_info = self.logged_accounts[username]
-            cookies = account_info["cookie"]
-            perform_work(username, cookies)
-        finally:
-            pass
-
-        self.load_and_refresh()
-
-    def update_log_display(self):
+    def update_log_display(self): # 更新日志显示
         if os.path.exists(self.log_file_path):
             max_retries = 3
             retries = 0
@@ -436,14 +409,40 @@ class LoginTool(QWidget):
                     if retries == max_retries:
                         QMessageBox.warning(self, "警告", f"读取日志文件时出错: {e}")
 
-    def clear_log(self):
-        if os.path.exists(self.log_file_path):
-            with open(self.log_file_path, 'w') as f:
-                f.truncate(0)
-            self.log_text_edit.clear()
-            # 重置 last_log_size 为 0
-            self.last_log_size = 0
+ # 其他工具方法
+    def calculate_work_cool_down(self, account_info): # 计算打工冷却时间
+        last_work_time_str = account_info.get("last_work_time", "")
+        if last_work_time_str:
+            try:
+                last_work_time = datetime.strptime(last_work_time_str, "%Y-%m-%d %H:%M:%S")
+                cool_down_end_time = last_work_time + timedelta(hours=6)
+                remaining_time = cool_down_end_time - self.current_time
+                if remaining_time.total_seconds() > 0:
+                    total_seconds = int(remaining_time.total_seconds()) + (1 if remaining_time.microseconds > 0 else 0)
+                    hours = total_seconds // 3600
+                    minutes = (total_seconds % 3600) // 60
+                    seconds = total_seconds % 60
+                    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            except ValueError:
+                logger.error(f"解析 last_work_time {last_work_time_str} 时出错，格式可能不正确")
+        return "00:00:00"
 
+    def display_admin_scheduled_tasks(self):
+        tasks_text = '\n'.join(self.admin_scheduled_tasks)
+        self.admin_tasks_list.setText(tasks_text)
+
+    def add_account(self, username, cookies):
+        self.logged_accounts[username] = {
+            "cookies": cookies,
+            "is_cookie_valid": True
+        }
+
+    def re_login(self, username):
+        self.show_login_browser()
+
+    def save_config_changes(self):
+        self.config["account_categories"] = self.logged_accounts
+        save_config(self.config)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
