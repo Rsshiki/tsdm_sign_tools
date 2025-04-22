@@ -1,7 +1,7 @@
 from browser_driver import setup_driver
 from log_config import setup_logger
 from selenium.webdriver.remote.webdriver import WebDriver
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, QObject, pyqtSignal
 from selenium.common.exceptions import WebDriverException
 
 # 配置日志
@@ -13,8 +13,14 @@ idle_timer = None
 
 MAIN_URL = 'https://www.tsdm39.com'
 
-# 记录功能是否在运行的标志
-is_function_running = False
+class TimerManager(QObject):
+    start_timer_signal = pyqtSignal()
+    stop_timer_signal = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.start_timer_signal.connect(self.start_idle_timer)
+        self.stop_timer_signal.connect(self.stop_idle_timer)
 
 def get_browser_driver(headless=True):
     global global_driver, is_function_running, idle_timer
@@ -33,34 +39,7 @@ def get_browser_driver(headless=True):
                 logger.error(f"访问页面 {MAIN_URL} 时出错: {e}")
         except Exception as e:
             logger.error(f"启动浏览器时出错: {e}")
-
-    # 有功能开始运行，停止空闲定时器
-    if idle_timer and idle_timer.isActive():
-        idle_timer.stop()
-    is_function_running = True
     return global_driver
-
-
-def start_idle_timer():
-    global idle_timer, global_driver
-    if idle_timer is None:
-        idle_timer = QTimer()
-        idle_timer.timeout.connect(close_browser_driver)
-        logger.info("空闲定时器已创建")
-
-    # 若浏览器驱动存在且没有功能在运行，启动 10 秒定时器
-    if global_driver and not is_function_running:
-        logger.info("尝试启动空闲定时器")
-        idle_timer.start(10000)
-        logger.info("空闲定时器已启动，10 秒后尝试关闭浏览器")
-    else:
-        logger.info("不满足启动空闲定时器的条件：浏览器驱动不存在或有功能正在运行")
-
-def function_finished():
-    global is_function_running
-    logger.info("功能已完成，将 is_function_running 标志设置为 False")
-    is_function_running = False
-    start_idle_timer()
 
 def close_browser_driver():
     global global_driver, idle_timer
@@ -70,7 +49,8 @@ def close_browser_driver():
             global_driver = None
             logger.info("浏览器已关闭")
         except Exception as e:
-            logger.error(f"关闭浏览器时出错: {e}")
+            # 详细记录异常信息，方便排查问题
+            logger.error(f"关闭浏览器时出错: {e}", exc_info=True)
     if idle_timer and idle_timer.isActive():
         idle_timer.stop()
         logger.info("空闲定时器已停止")

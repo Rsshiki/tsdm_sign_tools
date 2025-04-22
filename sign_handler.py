@@ -7,7 +7,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from config_handler import load_config, save_config
 from selenium.webdriver.support import expected_conditions as EC
-from browser_manager import get_browser_driver, function_finished, check_driver_validity
+from browser_manager import get_browser_driver, check_driver_validity
 
 # 配置日志
 logger = setup_logger('tsdm_sign_tools.log')
@@ -92,9 +92,6 @@ def perform_sign(username, cookies):
                 return
     except Exception as e:
         logger.error(f"检查是否已经签到时出错: {e}")
-    finally:
-        logger.info("签到操作结束，调用 function_finished")
-        function_finished()
 
     original_window = driver.current_window_handle #记录原始窗口
 
@@ -139,9 +136,6 @@ def perform_sign(username, cookies):
                 return
     except Exception as e:
         logger.error(f"检查是否已经签到时出错: {e}")
-    finally:
-        logger.info("签到操作结束，调用 function_finished")
-        function_finished()
         
 def update_sign_date(username):
     config = load_config()

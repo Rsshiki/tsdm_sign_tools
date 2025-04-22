@@ -6,7 +6,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from config_handler import load_config, save_config
 from selenium.webdriver.support import expected_conditions as EC
-from browser_manager import get_browser_driver, function_finished, check_driver_validity
+from browser_manager import get_browser_driver, check_driver_validity
 
 # 配置日志
 logger = setup_logger('tsdm_sign_tools.log')
@@ -176,9 +176,7 @@ def perform_work(username, cookies):
                         logger.info("打工成功")
                         # 未找到打工按钮，记录 last_work_time
                         record_last_work_time(driver, username)
-                    finally:
-                        logger.info("打工操作结束，调用 function_finished")
-                        function_finished()
+
                 except Exception as e:
                     logger.error(f"定位或点击停止广告按钮时出错: {e}")
                     choice = input("点击停止广告按钮失败，是否重新进行打工？(输入 y 重新打工，其他任意键退出): ")
@@ -190,9 +188,6 @@ def perform_work(username, cookies):
         logger.info("未找到打工按钮，可能处于冷却期")
         # 未找到打工按钮，记录 last_work_time
         record_last_work_time(driver, username)
-    finally:
-        logger.info("签到操作结束，调用 function_finished")
-        function_finished()
 
 def record_last_work_time(driver, username):
     last_work_time = None

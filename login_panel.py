@@ -14,6 +14,7 @@ from PyQt5.QtGui import QPainter, QBrush, QColor, QFont
 from sign_handler import perform_sign
 from work_handler import perform_work
 from login_handler import show_login_browser
+from browser_manager import close_browser_driver
 
 # 配置日志
 logger = setup_logger('tsdm_sign_tools.log')
@@ -192,15 +193,14 @@ class LoginTool(QWidget):
         self._init_config()
         self._init_timers()
         self._init_ui()
-        self.load_and_refresh()
         self.is_automation_running = False
         self.task_queue = []  # 任务队列
         self.is_task_running = False  # 任务锁
         self.log_reader_thread = None  # 日志读取线程
-
+        self.load_and_refresh()
     # 初始化相关
     def _init_config(self):
-        self.resize(1200, 800)  # 初始窗口大小
+        self.resize(937, 800)  # 初始窗口大小，长度比下面表格所有列加起来多57，就刚好能显示所有列
         self.log_file_path = 'tsdm_sign_tools.log'
         self.last_log_size = 0  # 新增属性，记录上一次读取的文件大小
         self.config = load_config()
@@ -251,7 +251,17 @@ class LoginTool(QWidget):
         table = QTableWidget()
         table.setColumnCount(8)
         table.setHorizontalHeaderLabels(["用户", "cookie状态", "签到情况", "打工冷却", "功能", "功能", "功能", "删除"])
+        # 隐藏表格线
+        table.setShowGrid(False)
         table.horizontalHeader().setStretchLastSection(True)
+        # 设置每列的固定宽度
+        column_widths = [120, 120, 120, 120, 100, 100, 100, 100]
+        for col, width in enumerate(column_widths):
+            table.setColumnWidth(col, width)
+        # 设置选择行为为无选择，禁止选中表格项
+        table.setSelectionMode(QTableWidget.NoSelection)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+
         return table
 
     def _create_admin_tasks_frame(self):
@@ -300,6 +310,13 @@ class LoginTool(QWidget):
         self.display_logged_accounts()
         self.display_admin_scheduled_tasks()
         self.update_browser_version_display()
+
+        # 检查开关状态并触发自动功能
+        if self.toggle_switch.checked:
+            logger.info("软件启动时自动功能已开启")
+            self.is_automation_running = True
+            # 触发一次任务检查，确保自动任务开始执行
+            self.update_all_time_dependent_info()
 
     def load_configuration(self):
         self.config = load_config()
@@ -413,6 +430,10 @@ class LoginTool(QWidget):
                 seen.add(task)
         self.task_queue = unique_tasks
 
+        # 检查任务队列是否为空，如果为空则关闭浏览器
+        if not self.task_queue:
+            logger.info("任务队列已清空，关闭浏览器进程")
+            close_browser_driver()
     def clear_log(self):
         if os.path.exists(self.log_file_path):
             with open(self.log_file_path, 'w') as f:
@@ -451,13 +472,13 @@ class LoginTool(QWidget):
             # 签到按钮
             current_hour = self.current_time.hour
             sign_button = QPushButton("签到")
-            sign_button.clicked.connect(lambda _, u=username: self.start_sign_for_user(u))
+            sign_button.clicked.connect(lambda _, u=username: self.add_task_to_queue('sign', u))
             sign_button.setEnabled(is_valid and not (0 <= current_hour < 1))
             self.user_table.setCellWidget(row, 4, sign_button)
 
             # 打工按钮
             work_button = QPushButton("打工")
-            work_button.clicked.connect(lambda _, u=username: self.start_work_for_user(u))
+            work_button.clicked.connect(lambda _, u=username: self.add_task_to_queue('work', u))
             work_button.setEnabled(is_valid)
             self.user_table.setCellWidget(row, 5, work_button)
 
@@ -471,6 +492,13 @@ class LoginTool(QWidget):
             delete_button.clicked.connect(lambda _, u=username: self.delete_account(u))
             self.user_table.setCellWidget(row, 7, delete_button)
 
+    def add_task_to_queue(self, task_type, username):
+        task = (task_type, username)
+        if task not in self.task_queue:
+            logger.info(f"添加 {username} 的 {task_type} 任务")
+            self.task_queue.append(task)
+            logger.info(f"更新任务队列: {self.task_queue}")
+            self.execute_task_if_available()
     def update_all_time_dependent_info(self):
         # 每秒获取一次当前时间
         current_time = datetime.now()
@@ -502,7 +530,6 @@ class LoginTool(QWidget):
 
         # 自动化功能逻辑
         if self.is_automation_running:
-            new_tasks = []
             for username, account_info in self.logged_accounts.items():
                 is_valid = account_info["is_cookie_valid"]
                 current_date = self.current_time.strftime("%Y-%m-%d")
@@ -518,30 +545,47 @@ class LoginTool(QWidget):
                 if is_valid and not sign_status and not (0 <= current_hour < 1):
                     sign_task = ('sign', username)
                     if sign_task not in self.task_queue:
-                        logger.info(f"自动为用户 {username} 准备添加签到任务")
                         self.task_queue.append(sign_task)
 
                 # 自动打工逻辑
                 if is_valid and cool_down_text == "00:00:00":
                     work_task = ('work', username)
                     if work_task not in self.task_queue:
-                        logger.info(f"自动为用户 {username} 准备添加打工任务")
                         self.task_queue.append(work_task)
 
-            self.task_queue.extend(new_tasks)
+        # logger.info(f"更新任务队列: {self.task_queue}")
+        self.execute_task_if_available()
+        
+    def execute_task_if_available(self):
+        while self.task_queue and not self.is_task_running:
+            try:
+                task_type, username = self.task_queue.pop(0)  # 从队列头部取出任务
+                logger.info(f"取出任务 {task_type} - {username} 后，任务队列: {self.task_queue}")
+                self.is_task_running = True
+                if task_type == 'sign':
+                    logger.info(f"自动为用户 {username} 启动签到")
+                    self.start_sign_for_user(username, callback=self.task_complete)
+                elif task_type == 'work':
+                    logger.info(f"自动为用户 {username} 启动打工")
+                    self.start_work_for_user(username, callback=self.task_complete)
+            except Exception as e:
+                logger.error(f"执行任务 {task_type} - {username} 时出错: {e}")
+                self.is_task_running = False  # 出错时重置标志
 
-        # 执行队列中的任务
-        if self.task_queue and not self.is_task_running:
-            task_type, username = self.task_queue.pop(0)
-            # 记录取出任务后的队列状态
-            logger.info(f"取出任务 {task_type} - {username} 后，任务队列: {self.task_queue}")
-            self.is_task_running = True
-            if task_type == 'sign':
-                logger.info(f"自动为用户 {username} 启动签到")
-                self.start_sign_for_user(username, callback=self.task_complete)
-            elif task_type == 'work':
-                logger.info(f"自动为用户 {username} 启动打工")
-                self.start_work_for_user(username, callback=self.task_complete)
+    def task_complete(self):
+        self.is_task_running = False  # 任务完成，解锁
+        unique_tasks = []
+        seen = set()
+        for task in self.task_queue:
+            if task not in seen:
+                unique_tasks.append(task)
+                seen.add(task)
+        self.task_queue = unique_tasks
+
+        # 检查任务队列是否为空，如果为空则关闭浏览器
+        if not self.task_queue:
+            logger.info("任务队列已清空，关闭浏览器进程")
+            close_browser_driver()
 
     def update_log_display(self): # 更新日志显示
         if os.path.exists(self.log_file_path):
@@ -601,6 +645,21 @@ class LoginTool(QWidget):
         self.config["account_categories"] = self.logged_accounts
         save_config(self.config)
 
+
+    def closeEvent(self, event):
+        """
+        重写关闭事件方法，在主窗口关闭时关闭浏览器
+        """
+        try:
+            logger.info("主程序即将关闭，尝试关闭浏览器进程")
+            close_browser_driver()
+            logger.info("浏览器进程已成功关闭")
+        except Exception as e:
+            logger.error(f"主程序关闭时，关闭浏览器进程出错: {e}")
+        
+        # 接受关闭事件，让主窗口正常关闭
+        event.accept()
+        
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     login_tool = LoginTool()
