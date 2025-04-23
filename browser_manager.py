@@ -1,7 +1,6 @@
-from browser_driver import setup_driver
 from log_config import setup_logger
-from selenium.webdriver.remote.webdriver import WebDriver
-from PyQt5.QtCore import QTimer, QObject, pyqtSignal
+from browser_driver import setup_driver
+from PyQt5.QtCore import QObject, pyqtSignal
 from selenium.common.exceptions import WebDriverException
 
 # 配置日志

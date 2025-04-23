@@ -3,7 +3,6 @@ import sys
 import shutil
 import tempfile
 import requests
-import re
 from selenium import webdriver
 from log_config import setup_logger
 from selenium.webdriver.firefox.options import Options

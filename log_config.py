@@ -21,5 +21,4 @@ def setup_logger(log_file_name):
         file_handler = logging.FileHandler(log_file_name, mode='a', encoding='utf-8')
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
-
     return logger

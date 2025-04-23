@@ -3,8 +3,8 @@ import random
 from log_config import setup_logger
 from datetime import datetime, timedelta
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
 from config_handler import load_config, save_config
+from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from browser_manager import get_browser_driver, check_driver_validity
 

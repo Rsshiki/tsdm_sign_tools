@@ -1,11 +1,11 @@
 import os
 import shutil
 from log_config import setup_logger
+from browser_driver import setup_driver
 from selenium.webdriver.common.by import By
+from config_handler import load_config, save_config
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from browser_driver import setup_driver
-from config_handler import load_config, save_config
 
 # 配置日志
 logger = setup_logger('tsdm_sign_tools.log')

@@ -6,17 +6,17 @@ import winreg
 import multiprocessing
 from datetime import datetime, timedelta
 from log_config import setup_logger
-from config_handler import load_config, save_config
-from browser_driver import update_geckodriver
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                             QPushButton, QFrame, QTextEdit, QMessageBox, QTableWidget,
-                             QTableWidgetItem, QSystemTrayIcon, QMenu, QAction)
-from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QPointF, pyqtSignal, QRectF, QThread, QObject, pyqtProperty  # 导入 pyqtProperty
-from PyQt5.QtGui import QPainter, QBrush, QColor, QFont, QIcon
 from sign_handler import perform_sign
 from work_handler import perform_work
 from login_handler import show_login_browser
+from browser_driver import update_geckodriver
 from browser_manager import close_browser_driver
+from config_handler import load_config, save_config
+from PyQt5.QtGui import QPainter, QBrush, QColor, QFont, QIcon
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                             QPushButton, QFrame, QTextEdit, QMessageBox, QTableWidget,
+                             QTableWidgetItem, QSystemTrayIcon, QMenu, QAction)
+from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QPointF, pyqtSignal, QRectF, QThread, pyqtProperty  # 导入 pyqtProperty
 
 # 配置日志
 logger = setup_logger('tsdm_sign_tools.log')
@@ -110,7 +110,6 @@ class WorkThread(QThread):
             # 可以在这里添加错误处理的日志
             pass
 
-
 class ToggleSwitch(QWidget):
     def __init__(self, parent=None, width=150, height=30, checked_color="#66BB6A",
                  unchecked_color="#E0E0E0", handle_color="#FAFAFA"):
@@ -189,11 +188,7 @@ class ToggleSwitch(QWidget):
         text_y = self.height() / 2 + painter.fontMetrics().ascent() / 2
         painter.drawText(int(text_x), int(text_y), text)
 
-# 定义一个信号类，用于在子进程和主进程间通信
-class RegistrySignal(QObject):
-    result_signal = pyqtSignal(bool)
-
-def add_startup_registry_worker(signal):
+def add_startup_registry_worker(queue):
     try:
         app_path = sys.executable if getattr(sys, 'frozen', False) else __file__
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
@@ -201,22 +196,22 @@ def add_startup_registry_worker(signal):
                              0, winreg.KEY_SET_VALUE)
         winreg.SetValueEx(key, "TSDM_Sign_Tools", 0, winreg.REG_SZ, app_path)
         winreg.CloseKey(key)
-        signal.result_signal.emit(True)
+        queue.put(True)
     except Exception as e:
         print(f"添加开机启动项失败: {e}")
-        signal.result_signal.emit(False)
+        queue.put(False)
 
-def remove_startup_registry_worker(signal):
+def remove_startup_registry_worker(queue):
     try:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
                              r"Software\Microsoft\Windows\CurrentVersion\Run",
                              0, winreg.KEY_ALL_ACCESS)
         winreg.DeleteValue(key, "TSDM_Sign_Tools")
         winreg.CloseKey(key)
-        signal.result_signal.emit(True)
+        queue.put(True)
     except Exception as e:
         print(f"删除开机启动项失败: {e}")
-        signal.result_signal.emit(False)
+        queue.put(False)
 
 def is_startup_enabled():
     try:
@@ -247,11 +242,12 @@ class LoginTool(QWidget):
         self.is_task_running = False  # 任务锁
         self.log_reader_thread = None  # 日志读取线程
         self.current_task_index = -1  # 新增：当前任务的索引
-        self.registry_signal = RegistrySignal()
-        self.registry_signal.result_signal.connect(self.handle_registry_result)
         self.load_and_refresh() # 初始化开机启动开关按钮
         self.init_tray_icon()   # 初始化系统托盘
-
+        self.registry_queue = None
+        self.registry_process = None
+        self.result_timer = QTimer(self)
+        self.result_timer.timeout.connect(self.check_registry_result)
 
     def init_startup_switch(self):
         self.startup_button = QPushButton(self)
@@ -370,12 +366,9 @@ class LoginTool(QWidget):
 
         self.user_table = self._create_user_table()
         main_layout.addWidget(self.user_table)
-        main_layout.addWidget(self._create_admin_tasks_frame())
+
         browser_info_frame = self._create_browser_info_frame()
         main_layout.addWidget(browser_info_frame)
-
-        # 将开机启动开关按钮添加到浏览器信息框架布局中
-        browser_info_frame.layout().addWidget(self.startup_button)
 
         self.log_text_edit = QTextEdit()
         self.log_text_edit.setReadOnly(True)
@@ -384,13 +377,25 @@ class LoginTool(QWidget):
         self.setLayout(main_layout)
 
     def toggle_startup(self):
+        self.registry_queue = multiprocessing.Queue()
         if is_startup_enabled():
-            process = multiprocessing.Process(target=remove_startup_registry_worker, args=(self.registry_signal,))
-            process.start()
+            self.registry_process = multiprocessing.Process(
+                target=remove_startup_registry_worker, args=(self.registry_queue,)
+            )
         else:
-            process = multiprocessing.Process(target=add_startup_registry_worker, args=(self.registry_signal,))
-            process.start()
+            self.registry_process = multiprocessing.Process(
+                target=add_startup_registry_worker, args=(self.registry_queue,)
+            )
+        self.registry_process.start()
+        self.result_timer.start(100)  # 每 100 毫秒检查一次结果
 
+    def check_registry_result(self):
+        if not self.registry_queue.empty():
+            success = self.registry_queue.get()
+            self.handle_registry_result(success)
+            self.result_timer.stop()
+            if self.registry_process.is_alive():
+                self.registry_process.terminate()
     def handle_registry_result(self, success):
         if success:
             self.update_startup_button_text()
@@ -415,43 +420,49 @@ class LoginTool(QWidget):
 
         return table
 
-    def _create_admin_tasks_frame(self):
-        frame = QFrame()
-        layout = QVBoxLayout(frame)
-        title_label = QLabel("管理员身份计划任务:")
-        title_label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(title_label)
-        self.admin_tasks_list = QLabel()
-        layout.addWidget(self.admin_tasks_list)
-        return frame
 
     def _create_browser_info_frame(self):
         frame = QFrame()
-        layout = QHBoxLayout(frame)
-        self.browser_version_label = QLabel()
-        layout.addWidget(self.browser_version_label)
+        # 外层垂直布局
+        outer_layout = QVBoxLayout(frame)
 
-        update_driver_button = QPushButton("更新驱动")
-        update_driver_button.clicked.connect(self.update_driver)
-        layout.addWidget(update_driver_button)
-        
+        # 第一行水平布局，放置浏览器版本标签、自动运行滑动开关按钮、添加账号按钮、开机启动按钮
+        first_row_layout = QHBoxLayout()
+
+        self.browser_version_label = QLabel()
+        first_row_layout.addWidget(self.browser_version_label)
+
         self.toggle_switch = ToggleSwitch()
         self.toggle_switch.clicked.connect(self.on_toggle_switch_clicked)
-        layout.addWidget(self.toggle_switch)
+        first_row_layout.addWidget(self.toggle_switch)
 
         self.add_account_button = QPushButton("添加账号")
         self.add_account_button.clicked.connect(self.show_login_browser)
         self._update_add_account_button_state()
-        layout.addWidget(self.add_account_button)
+        first_row_layout.addWidget(self.add_account_button)
+
+
+        first_row_layout.addWidget(self.startup_button)
+
+        outer_layout.addLayout(first_row_layout)
+
+        # 第二行水平布局，放置更新驱动按钮、清空日志按钮、时钟标签
+        second_row_layout = QHBoxLayout()
+
+        update_driver_button = QPushButton("更新驱动")
+        update_driver_button.clicked.connect(self.update_driver)
+        second_row_layout.addWidget(update_driver_button)
 
         clear_log_button = QPushButton("清空日志")
         clear_log_button.clicked.connect(self.clear_log)
-        layout.addWidget(clear_log_button)
+        second_row_layout.addWidget(clear_log_button)
 
         self.clock_label = QLabel()
         self.clock_label.setAlignment(Qt.AlignCenter)
         self.clock_label.setStyleSheet("font-size: 18px;")
-        layout.addWidget(self.clock_label)
+        second_row_layout.addWidget(self.clock_label)
+
+        outer_layout.addLayout(second_row_layout)
 
         return frame
 
@@ -459,7 +470,7 @@ class LoginTool(QWidget):
         """加载配置文件并刷新面板显示"""
         self.load_configuration()
         self.display_logged_accounts()
-        self.display_admin_scheduled_tasks()
+
         self.update_browser_version_display()
 
         # 检查开关状态并触发自动功能
@@ -548,7 +559,6 @@ class LoginTool(QWidget):
             logger.info(f"账号 {username} 已删除")
 
     def start_sign_for_user(self, username, callback=None):
-        logger.info(f"为用户 {username} 启动签到")
         account_info = self.logged_accounts[username]
         cookies = account_info["cookie"]
         self.sign_thread = SignThread(username, cookies)
@@ -559,7 +569,6 @@ class LoginTool(QWidget):
         self.sign_thread.start()
 
     def start_work_for_user(self, username, callback=None):
-        logger.info(f"为用户 {username} 启动打工")
         account_info = self.logged_accounts[username]
         cookies = account_info["cookie"]
         self.work_thread = WorkThread(username, cookies)
@@ -743,7 +752,6 @@ class LoginTool(QWidget):
 
         # 检查任务队列是否为空，如果为空则关闭浏览器
         if not self.task_queue:
-            logger.info("任务队列已清空，关闭浏览器进程")
             close_browser_driver()
             self.current_task_index = -1  # 队列清空，重置索引
 
@@ -791,10 +799,6 @@ class LoginTool(QWidget):
                 logger.error(f"解析 last_work_time {last_work_time_str} 时出错，格式可能不正确")
         return "00:00:00"
 
-    def display_admin_scheduled_tasks(self):
-        tasks_text = '\n'.join(self.admin_scheduled_tasks)
-        self.admin_tasks_list.setText(tasks_text)
-
     def add_account(self, username, cookies):
         self.logged_accounts[username] = {
             "cookies": cookies,
@@ -814,9 +818,7 @@ class LoginTool(QWidget):
         重写关闭事件方法，在主窗口关闭时关闭浏览器
         """
         try:
-            logger.info("主程序即将关闭，尝试关闭浏览器进程")
             close_browser_driver()
-            logger.info("浏览器进程已成功关闭")
         except Exception as e:
             logger.error(f"主程序关闭时，关闭浏览器进程出错: {e}")
         
@@ -824,6 +826,7 @@ class LoginTool(QWidget):
         event.accept()
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     app = QApplication(sys.argv)
     login_tool = LoginTool()
     login_tool.show()
