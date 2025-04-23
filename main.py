@@ -191,10 +191,11 @@ class ToggleSwitch(QWidget):
 def add_startup_registry_worker(queue):
     try:
         app_path = sys.executable if getattr(sys, 'frozen', False) else __file__
+        quoted_app_path = f'"{app_path}"'
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
                              r"Software\Microsoft\Windows\CurrentVersion\Run",
                              0, winreg.KEY_SET_VALUE)
-        winreg.SetValueEx(key, "TSDM_Sign_Tools", 0, winreg.REG_SZ, app_path)
+        winreg.SetValueEx(key, "TSDM_Sign_Tools", 0, winreg.REG_SZ, quoted_app_path)
         winreg.CloseKey(key)
         queue.put(True)
     except Exception as e:
