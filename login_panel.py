@@ -2,15 +2,17 @@ import io
 import os
 import sys
 import time
+import winreg
+import multiprocessing
 from datetime import datetime, timedelta
 from log_config import setup_logger
 from config_handler import load_config, save_config
 from browser_driver import update_geckodriver
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QFrame, QTextEdit, QMessageBox, QTableWidget,
-                             QTableWidgetItem)
-from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QPointF, pyqtSignal, QRectF, QThread, pyqtProperty  # 导入 pyqtProperty
-from PyQt5.QtGui import QPainter, QBrush, QColor, QFont
+                             QTableWidgetItem, QSystemTrayIcon, QMenu, QAction)
+from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QPointF, pyqtSignal, QRectF, QThread, QObject, pyqtProperty  # 导入 pyqtProperty
+from PyQt5.QtGui import QPainter, QBrush, QColor, QFont, QIcon
 from sign_handler import perform_sign
 from work_handler import perform_work
 from login_handler import show_login_browser
@@ -187,19 +189,148 @@ class ToggleSwitch(QWidget):
         text_y = self.height() / 2 + painter.fontMetrics().ascent() / 2
         painter.drawText(int(text_x), int(text_y), text)
 
+# 定义一个信号类，用于在子进程和主进程间通信
+class RegistrySignal(QObject):
+    result_signal = pyqtSignal(bool)
+
+def add_startup_registry_worker(signal):
+    try:
+        app_path = sys.executable if getattr(sys, 'frozen', False) else __file__
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                             r"Software\Microsoft\Windows\CurrentVersion\Run",
+                             0, winreg.KEY_SET_VALUE)
+        winreg.SetValueEx(key, "TSDM_Sign_Tools", 0, winreg.REG_SZ, app_path)
+        winreg.CloseKey(key)
+        signal.result_signal.emit(True)
+    except Exception as e:
+        print(f"添加开机启动项失败: {e}")
+        signal.result_signal.emit(False)
+
+def remove_startup_registry_worker(signal):
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                             r"Software\Microsoft\Windows\CurrentVersion\Run",
+                             0, winreg.KEY_ALL_ACCESS)
+        winreg.DeleteValue(key, "TSDM_Sign_Tools")
+        winreg.CloseKey(key)
+        signal.result_signal.emit(True)
+    except Exception as e:
+        print(f"删除开机启动项失败: {e}")
+        signal.result_signal.emit(False)
+
+def is_startup_enabled():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                             r"Software\Microsoft\Windows\CurrentVersion\Run",
+                             0, winreg.KEY_READ)
+        try:
+            winreg.QueryValueEx(key, "TSDM_Sign_Tools")
+            winreg.CloseKey(key)
+            return True
+        except OSError:
+            winreg.CloseKey(key)
+            return False
+    except Exception as e:
+        print(f"检查开机启动项状态失败: {e}")
+        return False
+
 class LoginTool(QWidget):
     def __init__(self):
         super().__init__()
         self._init_config()
+        self.setFixedWidth(937)
         self._init_timers()
+        self.init_startup_switch()
         self._init_ui()
         self.is_automation_running = False
         self.task_queue = []  # 任务队列
         self.is_task_running = False  # 任务锁
         self.log_reader_thread = None  # 日志读取线程
         self.current_task_index = -1  # 新增：当前任务的索引
-        self.load_and_refresh()
+        self.registry_signal = RegistrySignal()
+        self.registry_signal.result_signal.connect(self.handle_registry_result)
+        self.load_and_refresh() # 初始化开机启动开关按钮
+        self.init_tray_icon()   # 初始化系统托盘
+
+
+    def init_startup_switch(self):
+        self.startup_button = QPushButton(self)
+        self.update_startup_button_text()
+        self.startup_button.clicked.connect(self.toggle_startup)
+        
+    def update_startup_button_text(self):
+        if is_startup_enabled():
+            self.startup_button.setText("开机启动: 开启")
+        else:
+            self.startup_button.setText("开机启动: 关闭")
+
     # 初始化相关
+    def init_tray_icon(self):
+        # 获取图标路径
+        icon_path = self.get_icon_path('app_icon.ico')
+        # 创建系统托盘图标
+        self.tray_icon = QSystemTrayIcon(self)
+        # 替换为你的图标路径
+        self.tray_icon.setIcon(QIcon(icon_path))
+
+        # 创建菜单
+        tray_menu = QMenu(self)
+
+        # 创建显示窗口的动作
+        show_action = QAction("显示窗口", self)
+        show_action.triggered.connect(self.showNormal)
+        tray_menu.addAction(show_action)
+
+        # 创建退出程序的动作
+        quit_action = QAction("退出", self)
+        quit_action.triggered.connect(self.quit_app)
+        tray_menu.addAction(quit_action)
+
+        # 将菜单设置给系统托盘图标
+        self.tray_icon.setContextMenu(tray_menu)
+
+        # 显示系统托盘图标
+        self.tray_icon.show()
+
+    def get_icon_path(self, filename):
+        if getattr(sys, 'frozen', False):
+            # 如果是打包后的程序
+            base_path = sys._MEIPASS
+        else:
+            # 如果是未打包的程序
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(base_path, filename)
+
+    def quit_app(self):
+        # 确保程序完全退出
+        self.tray_icon.hide()
+        QApplication.quit()
+
+    def closeEvent(self, event):
+        # 重写关闭事件，最小化到系统托盘而不是关闭程序
+        event.ignore()
+        self.hide()
+        self.tray_icon.showMessage(
+            "程序已最小化",
+            "程序已最小化到系统托盘，右键点击图标进行操作。",
+            QSystemTrayIcon.Information,
+            2000
+        )
+
+    def changeEvent(self, event):
+        # 处理窗口状态变化事件
+        if event.type() == event.WindowStateChange:
+            if self.isMinimized():
+                event.ignore()
+                self.hide()
+                self.tray_icon.showMessage(
+                    "程序已最小化",
+                    "程序已最小化到系统托盘，右键点击图标进行操作。",
+                    QSystemTrayIcon.Information,
+                    2000
+                )
+        super().changeEvent(event)
+
     def _init_config(self):
         self.resize(937, 800)  # 初始窗口大小，长度比下面表格所有列加起来多57，就刚好能显示所有列
         self.log_file_path = 'tsdm_sign_tools.log'
@@ -240,12 +371,31 @@ class LoginTool(QWidget):
         self.user_table = self._create_user_table()
         main_layout.addWidget(self.user_table)
         main_layout.addWidget(self._create_admin_tasks_frame())
-        main_layout.addWidget(self._create_browser_info_frame())
+        browser_info_frame = self._create_browser_info_frame()
+        main_layout.addWidget(browser_info_frame)
+
+        # 将开机启动开关按钮添加到浏览器信息框架布局中
+        browser_info_frame.layout().addWidget(self.startup_button)
+
         self.log_text_edit = QTextEdit()
         self.log_text_edit.setReadOnly(True)
         main_layout.addWidget(self.log_text_edit)
 
         self.setLayout(main_layout)
+
+    def toggle_startup(self):
+        if is_startup_enabled():
+            process = multiprocessing.Process(target=remove_startup_registry_worker, args=(self.registry_signal,))
+            process.start()
+        else:
+            process = multiprocessing.Process(target=add_startup_registry_worker, args=(self.registry_signal,))
+            process.start()
+
+    def handle_registry_result(self, success):
+        if success:
+            self.update_startup_button_text()
+        else:
+            QMessageBox.critical(self, "错误", "注册表操作失败，请检查权限或稍后重试。")
 
     # UI 创建工具方法
     def _create_user_table(self):
