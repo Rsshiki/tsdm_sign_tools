@@ -518,7 +518,6 @@ class LoginTool(QWidget):
             self.toggle_switch.animation.setEndValue(0)
             self.toggle_switch.animation.start()
             QMessageBox.warning(self, "警告", "没有可用账号，无法开启自动功能。")
-            logger.warning("没有可用账号，自动功能开启失败。")
         else:
             if self.toggle_switch.checked:
                 logger.info("自动功能已开启")
@@ -603,7 +602,7 @@ class LoginTool(QWidget):
 
     # 数据更新
     def update_browser_version_display(self):
-        version = self.browser_info.get('version', '未知，请先更新驱动')
+        version = self.browser_info.get('version', '浏览器驱动未安装，请先更新')
         self.browser_version_label.setText(f"驱动版本: {version}")
 
     def display_logged_accounts(self):

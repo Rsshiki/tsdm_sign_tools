@@ -8,7 +8,6 @@ logger = setup_logger('tsdm_sign_tools.log')
 
 # 全局浏览器驱动实例
 global_driver = None
-idle_timer = None
 
 MAIN_URL = 'https://www.tsdm39.com'
 
@@ -16,13 +15,8 @@ class TimerManager(QObject):
     start_timer_signal = pyqtSignal()
     stop_timer_signal = pyqtSignal()
 
-    def __init__(self):
-        super().__init__()
-        self.start_timer_signal.connect(self.start_idle_timer)
-        self.stop_timer_signal.connect(self.stop_idle_timer)
-
 def get_browser_driver(headless=True):
-    global global_driver, is_function_running, idle_timer
+    global global_driver
     if not check_driver_validity():
         try:
             global_driver, _ = setup_driver(headless=headless)
@@ -41,18 +35,14 @@ def get_browser_driver(headless=True):
     return global_driver
 
 def close_browser_driver():
-    global global_driver, idle_timer
+    global global_driver
     if global_driver:
         try:
             global_driver.quit()
             global_driver = None
-            logger.info("浏览器已关闭")
         except Exception as e:
             # 详细记录异常信息，方便排查问题
             logger.error(f"关闭浏览器时出错: {e}", exc_info=True)
-    if idle_timer and idle_timer.isActive():
-        idle_timer.stop()
-        logger.info("空闲定时器已停止")
 
 def check_driver_validity():
     global global_driver
