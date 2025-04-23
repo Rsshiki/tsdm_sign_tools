@@ -10,8 +10,11 @@
 
 支持自动运行
 
-可以挂在系统托盘
+最小化可以挂在系统托盘
 
 通过注册表实现开机自启动
 
 自用练手项目，喜欢的朋友可以点个赞，谢谢！
+
+# 【界面展示】
+![界面展示](https://github.com/Rsshiki/tsdm_sign_tools/blob/master/picture/%E8%BF%90%E8%A1%8C%E7%95%8C%E9%9D%A2.png?raw=true)
