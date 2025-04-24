@@ -1,10 +1,22 @@
 import os
+import sys
 import json
 import logging
 
 # 配置日志
 logger = logging.getLogger('tsdm_sign_tools')
-CONFIG_FILE = 'config.json'
+
+
+# 动态获取基础路径
+if getattr(sys, 'frozen', False):
+    # 如果是打包后的程序，获取 exe 所在目录
+    base_path = os.path.dirname(sys.executable)
+else:
+    # 如果是未打包的程序，使用当前脚本所在目录
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
+# 构建配置文件的完整路径
+CONFIG_FILE = os.path.join(base_path, 'config.json')
 
 def load_config():
     """

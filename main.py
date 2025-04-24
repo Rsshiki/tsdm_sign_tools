@@ -330,7 +330,14 @@ class LoginTool(QWidget):
 
     def _init_config(self):
         self.resize(937, 800)  # 初始窗口大小，长度比下面表格所有列加起来多57，就刚好能显示所有列
-        self.log_file_path = 'tsdm_sign_tools.log'
+        # 动态计算日志文件路径
+        if getattr(sys, 'frozen', False):
+            # 如果是打包后的程序
+            base_path = os.path.dirname(sys.executable)
+        else:
+            # 如果是未打包的程序
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        self.log_file_path = os.path.join(base_path, 'tsdm_sign_tools.log')
         self.last_log_size = 0  # 新增属性，记录上一次读取的文件大小
         self.config = load_config()
         self.logged_accounts = self.config.get('account_categories', {})
