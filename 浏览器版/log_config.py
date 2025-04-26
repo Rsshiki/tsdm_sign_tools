@@ -8,11 +8,9 @@ def setup_logger(log_file_name):
     if getattr(sys, 'frozen', False):
         # 如果是打包后的程序，使用 sys._MEIPASS 所在目录
         base_path = os.path.dirname(sys.executable)
-        print("base_path:", base_path)
     else:
         # 如果是未打包的程序，使用当前脚本所在目录
         base_path = os.path.dirname(os.path.abspath(__file__))
-        print("base_path:", base_path)
     # 构建日志文件的完整路径
     log_file_path = os.path.join(base_path, log_file_name)
     # 创建日志记录器，使用固定名称避免不同模块获取不同实例

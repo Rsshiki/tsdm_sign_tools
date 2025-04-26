@@ -23,7 +23,7 @@ logger = setup_logger('tsdm_sign_tools.log')
 
 LOGIN_URL = 'https://www.tsdm39.com/member.php?mod=logging&action=login'
 
-class UpdateDriverThread(QThread):
+class UpdateDriverThread(QThread): # 更新驱动线程类
     result_signal = pyqtSignal(int)  # 定义信号，用于发送更新结果
 
     def run(self):
@@ -39,7 +39,7 @@ class UpdateDriverThread(QThread):
             # 可以记录异常日志
             self.result_signal.emit(-1)
 
-class LogReaderThread(QThread):
+class LogReaderThread(QThread): # 日志读取线程类
     new_log_signal = pyqtSignal(str)  # 定义信号，用于发送新的日志内容
 
     def __init__(self, log_file_path, last_log_size):
@@ -62,7 +62,7 @@ class LogReaderThread(QThread):
                 # 这里可以记录异常日志
                 pass
 
-class SignThread(QThread):
+class SignThread(QThread): # 签到线程类
     # 定义信号，任务完成时发出
     finished = pyqtSignal(str)
 
@@ -79,7 +79,8 @@ class SignThread(QThread):
             # 可以在这里添加错误处理的日志
             pass
 
-class AddAccountThread(QThread):
+class AddAccountThread(QThread): # 添加账号线程类
+    # 定义信号，任务完成时发出
     finished = pyqtSignal()
 
     def __init__(self, parent):
@@ -94,7 +95,8 @@ class AddAccountThread(QThread):
             # 可以在这里添加错误处理的日志
             pass
 
-class WorkThread(QThread):
+class WorkThread(QThread): # 工作线程类
+    # 定义信号，任务完成时发出
     finished = pyqtSignal(str)
 
     def __init__(self, username, cookies):
@@ -110,7 +112,7 @@ class WorkThread(QThread):
             # 可以在这里添加错误处理的日志
             pass
 
-class ToggleSwitch(QWidget):
+class ToggleSwitch(QWidget): # 自定义开关类
     def __init__(self, parent=None, width=150, height=30, checked_color="#66BB6A",
                  unchecked_color="#E0E0E0", handle_color="#FAFAFA"):
         super().__init__(parent)
@@ -188,49 +190,7 @@ class ToggleSwitch(QWidget):
         text_y = self.height() / 2 + painter.fontMetrics().ascent() / 2
         painter.drawText(int(text_x), int(text_y), text)
 
-def add_startup_registry_worker(queue):
-    try:
-        app_path = sys.executable if getattr(sys, 'frozen', False) else __file__
-        quoted_app_path = f'"{app_path}"'
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                             r"Software\Microsoft\Windows\CurrentVersion\Run",
-                             0, winreg.KEY_SET_VALUE)
-        winreg.SetValueEx(key, "TSDM_Sign_Tools", 0, winreg.REG_SZ, quoted_app_path)
-        winreg.CloseKey(key)
-        queue.put(True)
-    except Exception as e:
-        print(f"添加开机启动项失败: {e}")
-        queue.put(False)
-
-def remove_startup_registry_worker(queue):
-    try:
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                             r"Software\Microsoft\Windows\CurrentVersion\Run",
-                             0, winreg.KEY_ALL_ACCESS)
-        winreg.DeleteValue(key, "TSDM_Sign_Tools")
-        winreg.CloseKey(key)
-        queue.put(True)
-    except Exception as e:
-        print(f"删除开机启动项失败: {e}")
-        queue.put(False)
-
-def is_startup_enabled():
-    try:
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                             r"Software\Microsoft\Windows\CurrentVersion\Run",
-                             0, winreg.KEY_READ)
-        try:
-            winreg.QueryValueEx(key, "TSDM_Sign_Tools")
-            winreg.CloseKey(key)
-            return True
-        except OSError:
-            winreg.CloseKey(key)
-            return False
-    except Exception as e:
-        print(f"检查开机启动项状态失败: {e}")
-        return False
-
-class LoginTool(QWidget):
+class LoginTool(QWidget): # 登录工具面板类
     def __init__(self):
         super().__init__()
         self._init_config()
@@ -262,7 +222,7 @@ class LoginTool(QWidget):
             self.startup_button.setText("开机启动: 关闭")
 
     # 初始化相关
-    def init_tray_icon(self):
+    def init_tray_icon(self): # 初始化系统托盘
         # 获取图标路径
         icon_path = self.get_icon_path('app_icon.ico')
         # 创建系统托盘图标
@@ -289,7 +249,7 @@ class LoginTool(QWidget):
         # 显示系统托盘图标
         self.tray_icon.show()
 
-    def get_icon_path(self, filename):
+    def get_icon_path(self, filename): # 获取图标路径
         if getattr(sys, 'frozen', False):
             # 如果是打包后的程序
             base_path = sys._MEIPASS
@@ -298,8 +258,7 @@ class LoginTool(QWidget):
             base_path = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(base_path, filename)
 
-    def quit_app(self):
-        # 确保程序完全退出
+    def quit_app(self): # 退出程序
         self.tray_icon.hide()
         QApplication.quit()
 
@@ -414,7 +373,7 @@ class LoginTool(QWidget):
     def _create_user_table(self):
         table = QTableWidget()
         table.setColumnCount(8)
-        table.setHorizontalHeaderLabels(["用户", "cookie状态", "签到情况", "打工冷却", "功能", "功能", "功能", "删除"])
+        table.setHorizontalHeaderLabels(["用户", "cookie状态", "签到情况", "打工冷却", "", "功", "能", ""])
         # 隐藏表格线
         table.setShowGrid(False)
         table.horizontalHeader().setStretchLastSection(True)
@@ -831,6 +790,49 @@ class LoginTool(QWidget):
         
         # 接受关闭事件，让主窗口正常关闭
         event.accept()
+
+#开启启动项目
+def add_startup_registry_worker(queue):
+    try:
+        app_path = sys.executable if getattr(sys, 'frozen', False) else __file__
+        quoted_app_path = f'"{app_path}"'
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                             r"Software\Microsoft\Windows\CurrentVersion\Run",
+                             0, winreg.KEY_SET_VALUE)
+        winreg.SetValueEx(key, "TSDM_Sign_Tools", 0, winreg.REG_SZ, quoted_app_path)
+        winreg.CloseKey(key)
+        queue.put(True)
+    except Exception as e:
+        print(f"添加开机启动项失败: {e}")
+        queue.put(False)
+
+def remove_startup_registry_worker(queue):
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                             r"Software\Microsoft\Windows\CurrentVersion\Run",
+                             0, winreg.KEY_ALL_ACCESS)
+        winreg.DeleteValue(key, "TSDM_Sign_Tools")
+        winreg.CloseKey(key)
+        queue.put(True)
+    except Exception as e:
+        print(f"删除开机启动项失败: {e}")
+        queue.put(False)
+
+def is_startup_enabled():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                             r"Software\Microsoft\Windows\CurrentVersion\Run",
+                             0, winreg.KEY_READ)
+        try:
+            winreg.QueryValueEx(key, "TSDM_Sign_Tools")
+            winreg.CloseKey(key)
+            return True
+        except OSError:
+            winreg.CloseKey(key)
+            return False
+    except Exception as e:
+        print(f"检查开机启动项状态失败: {e}")
+        return False
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()

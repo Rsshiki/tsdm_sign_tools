@@ -6,6 +6,8 @@ from config_handler import load_config, save_config
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from browser_manager import get_browser_driver, check_driver_validity
+import requests
+from bs4 import BeautifulSoup
 
 # 配置日志
 logger = setup_logger('tsdm_sign_tools.log')
@@ -29,36 +31,31 @@ def ensure_browser_started():
     return driver
 
 def check_cookie_validity(driver, username, cookies):
-    logger.info("准备添加浏览器cookie")
-    if not check_driver_validity():
-        driver = get_browser_driver()
-        if not driver:
-            return False
+    logger.info("准备使用 requests 检查 cookie 有效性")
     try:
-        # 清除旧的 cookie
-        driver.delete_all_cookies()
-        # 添加当前账号的 cookie
-        for cookie in cookies:
-            driver.add_cookie(cookie)
-        # 刷新页面
-        driver.refresh()
-        logger.info("浏览器cookie添加完成并完成刷新")
-        space_link_element = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, '//a[@title="访问我的空间"]'))
-        )
-        actual_username = space_link_element.text.strip()
-        if actual_username == username:
-            return True
-        return True
+        # 使用 requests 发送请求并附带 cookies
+        response = requests.get(SIGN_URL, cookies=cookies)
+        response.raise_for_status()
+        
+        # 使用 BeautifulSoup 解析 HTML 数据
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # 查找访问我的空间链接元素
+        space_link_element = soup.find('a', {'title': '访问我的空间'})
+        if space_link_element:
+            actual_username = space_link_element.get_text().strip()
+            if actual_username == username:
+                return True
     except Exception as e:
         logger.error(f"检查 {username} 的 cookie 有效性时出错: {e}")
-
+        
         # 标记 cookie 无效
         config = load_config()
         if username in config.get('account_categories', {}):
             config['account_categories'][username]["is_cookie_valid"] = False
             save_config(config)
-        return False
+    
+    return False
 
 def perform_sign(username, cookies):
     # 确保浏览器已启动
